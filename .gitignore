@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+venv/
+*.sqlite3
+bist.db
+bist.db-journal
+
+# Node
+frontend/node_modules/
+frontend/build/
+frontend_backup/node_modules/
+frontend_backup/build/
+.DS_Store
+npm-debug.log
+yarn-error.log
+
+# IDE / Editor
+.vscode/
+.idea/ 
