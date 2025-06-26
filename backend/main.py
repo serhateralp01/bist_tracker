@@ -11,6 +11,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from backend.schemas import Transaction
 from backend.utils.stock_fetcher import get_latest_price
+from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
 
 
 app = FastAPI()
@@ -27,11 +28,18 @@ app.add_middleware(
 # Veritabanını oluştur
 models.Base.metadata.create_all(bind=engine)
 
+# DB bağımlılığı
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
 router = APIRouter()
 
-@router.get("/portfolio/daily_value")
-def get_daily_portfolio_value():
-    db = SessionLocal()
+@router.get("/portfolio/daily_value", response_model=list[schemas.PortfolioValue])
+def get_daily_portfolio_value(db: Session = Depends(get_db)):
     transactions = db.query(models.Transaction).order_by(models.Transaction.date).all()
 
     holdings = defaultdict(float)
@@ -45,7 +53,9 @@ def get_daily_portfolio_value():
     end_day = datetime.now().date()
     tx_index = 0
 
-    def fetch_price(symbol):
+    def fetch_price(symbol, date):
+        # This should be enhanced to fetch historical prices for true accuracy,
+        # but for now, we use the latest price for simplicity in visualization.
         return get_latest_price(symbol) or 0
 
     while current_day <= end_day:
@@ -61,15 +71,24 @@ def get_daily_portfolio_value():
                 cash += tx.quantity
             elif tx.type == "withdrawal":
                 cash -= tx.quantity
+            elif tx.type == "dividend":
+                cash += tx.price
+
             tx_index += 1
 
-        total = cash
+        total_try = cash
         for symbol, qty in holdings.items():
-            total += qty * fetch_price(symbol)
+            if qty > 0:
+                total_try += qty * fetch_price(symbol, current_day)
 
+        # Fetch historical EUR rate for the day
+        eur_rate = get_historical_eur_try_rate(current_day)
+        total_eur = (total_try / eur_rate) if eur_rate and eur_rate > 0 else 0
+        
         portfolio_value_by_day.append({
             "date": str(current_day),
-            "value": round(total, 2)
+            "value_try": round(total_try, 2),
+            "value_eur": round(total_eur, 2)
         })
 
         current_day += timedelta(days=1)
@@ -77,14 +96,6 @@ def get_daily_portfolio_value():
     return portfolio_value_by_day
 
 app.include_router(router)
-
-# DB bağımlılığı
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 @app.get("/")
 def root():
@@ -141,13 +152,15 @@ def get_portfolio(db: Session = Depends(get_db)):
     result = calculate_portfolio_value(transactions, mock_prices)
     return result
 
-@app.get("/portfolio/profit_loss")
+@app.get("/portfolio/profit_loss", response_model=schemas.PortfolioAnalysis)
 def get_profit_loss(db: Session = Depends(get_db)):
     transactions = db.query(models.Transaction).all()
 
     buy_total = defaultdict(float)
     sell_total = defaultdict(float)
     quantity = defaultdict(float)
+    cash_invested = 0
+    cash_returned = 0
 
     for tx in transactions:
         if tx.type == "buy":
@@ -156,19 +169,52 @@ def get_profit_loss(db: Session = Depends(get_db)):
         elif tx.type == "sell":
             sell_total[tx.symbol] += tx.quantity * tx.price
             quantity[tx.symbol] -= tx.quantity
+        elif tx.type == "deposit":
+            cash_invested += tx.quantity
+        elif tx.type == "withdrawal":
+            cash_returned += tx.quantity
+        # Dividends are considered cash returned from investment
+        elif tx.type == "dividend":
+            cash_returned += tx.price # price field holds total dividend amount
 
-    result = []
+    holdings_data = []
+    total_portfolio_value_try = 0
+    total_portfolio_cost_try = 0
+
     for symbol, qty in quantity.items():
-        current_price = get_latest_price(symbol) or 0
-        current_value = qty * current_price
-        cost = buy_total[symbol] - sell_total[symbol]
-        result.append({
-            "symbol": symbol,
-            "quantity": qty,
-            "cost": round(cost, 2),
-            "current_value": round(current_value, 2),
-            "profit_loss": round(current_value - cost, 2),
-            "current_price": round(current_price, 2)
-        })
+        if qty > 0:
+            current_price = get_latest_price(symbol) or 0
+            current_value = qty * current_price
+            cost = buy_total[symbol] - sell_total[symbol]
+            
+            holdings_data.append({
+                "symbol": symbol,
+                "quantity": qty,
+                "cost": round(cost, 2),
+                "current_value": round(current_value, 2),
+                "profit_loss": round(current_value - cost, 2),
+                "current_price": round(current_price, 2)
+            })
+            total_portfolio_value_try += current_value
+            total_portfolio_cost_try += cost
 
-    return result
+    # Net cash is what was put in minus what was taken out
+    net_cash_flow = cash_invested - cash_returned
+    total_portfolio_cost_try += net_cash_flow
+    
+    # Also add net cash to total portfolio value
+    total_portfolio_value_try += net_cash_flow
+
+    # Fetch latest EUR rate and calculate EUR value
+    latest_eur_rate = get_latest_eur_try_rate()
+    total_portfolio_value_eur = (total_portfolio_value_try / latest_eur_rate) if latest_eur_rate else 0
+
+    return {
+        "holdings": holdings_data,
+        "totals": {
+            "total_value_try": round(total_portfolio_value_try, 2),
+            "total_cost_try": round(total_portfolio_cost_try, 2),
+            "total_profit_loss_try": round(total_portfolio_value_try - total_portfolio_cost_try, 2),
+            "total_value_eur": round(total_portfolio_value_eur, 2)
+        }
+    }
