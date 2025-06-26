@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 from backend import models, schemas, crud
 from backend.database import SessionLocal, engine
 from backend.utils.message_parser import parse_message
+from backend.utils.event_parser import parse_event_message
 from backend.utils.portfolio_calculator import calculate_portfolio_value
 from fastapi import APIRouter
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from backend.schemas import Transaction
 from backend.utils.stock_fetcher import get_latest_price
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
@@ -37,6 +38,23 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def get_holdings_on_date(db: Session, symbol: str, event_date: date) -> float:
+    """Calculates the total quantity of a stock held just before a specific date."""
+    transactions = db.query(models.Transaction).filter(
+        models.Transaction.symbol == symbol,
+        models.Transaction.date < event_date
+    ).order_by(models.Transaction.date).all()
+
+    quantity = 0.0
+    for tx in transactions:
+        if tx.type == 'buy':
+            quantity += tx.quantity
+        elif tx.type == 'sell':
+            quantity -= tx.quantity
+        elif tx.type == 'split':
+            quantity += tx.quantity
+    return quantity
 
 router = APIRouter()
 
@@ -87,6 +105,8 @@ def get_daily_portfolio_value(db: Session = Depends(get_db)):
                 cash -= tx.quantity
             elif tx.type == "dividend":
                 cash += tx.price
+            elif tx.type == "split":
+                holdings[tx.symbol] += tx.quantity
             tx_index += 1
 
         # Find the latest available prices for the current day from our batch data
@@ -95,22 +115,22 @@ def get_daily_portfolio_value(db: Session = Depends(get_db)):
         except KeyError:
             continue # Skip if date is out of range of our historical data
 
-        # Calculate total portfolio value in TRY
-        total_try = cash
+        # Calculate total portfolio value in TRY (SADECE HİSSELER)
+        stock_value_try = 0
         for symbol, qty in holdings.items():
             if qty > 0:
                 symbol_col = f"{symbol}.IS" if not symbol.endswith('.IS') else symbol
                 if symbol_col in day_prices and pd.notna(day_prices[symbol_col]):
-                    total_try += qty * day_prices[symbol_col]
+                    stock_value_try += qty * day_prices[symbol_col]
 
-        # Calculate total portfolio value in EUR
+        # Calculate total portfolio value in EUR (SADECE HİSSELER)
         eur_rate = day_prices['EURTRY=X'] if 'EURTRY=X' in day_prices and pd.notna(day_prices['EURTRY=X']) else None
-        total_eur = (total_try / eur_rate) if eur_rate and eur_rate > 0 else 0
+        stock_value_eur = (stock_value_try / eur_rate) if eur_rate and eur_rate > 0 else 0
         
         portfolio_value_by_day.append({
             "date": str(current_day),
-            "value_try": round(total_try, 2),
-            "value_eur": round(total_eur, 2)
+            "value_try": round(stock_value_try, 2),
+            "value_eur": round(stock_value_eur, 2)
         })
 
     return portfolio_value_by_day
@@ -137,7 +157,7 @@ def parse_broker_message(payload: dict):
         return result
     return {"error": "Mesaj tanınamadı"}
 
-@app.post("/parse-and-log")
+@router.post("/parse-and-log")
 def parse_and_log(payload: dict, db: Session = Depends(get_db)):
     message = payload.get("text", "")
     result = parse_message(message)
@@ -196,6 +216,9 @@ def get_profit_loss(db: Session = Depends(get_db)):
         # Dividends are considered cash returned from investment
         elif tx.type == "dividend":
             cash_returned += tx.price # price field holds total dividend amount
+        elif tx.type == 'split':
+            # Splits increase quantity but don't affect cost basis directly
+            quantity[tx.symbol] += tx.quantity
 
     holdings_data = []
     total_portfolio_value_try = 0
@@ -218,12 +241,11 @@ def get_profit_loss(db: Session = Depends(get_db)):
             total_portfolio_value_try += current_value
             total_portfolio_cost_try += cost
 
+    # SADECE HİSSE DEĞERLERİ - cash flow dahil etmiyoruz
     # Net cash is what was put in minus what was taken out
-    net_cash_flow = cash_invested - cash_returned
-    total_portfolio_cost_try += net_cash_flow
-    
-    # Also add net cash to total portfolio value
-    total_portfolio_value_try += net_cash_flow
+    # net_cash_flow = cash_invested - cash_returned
+    # total_portfolio_cost_try += net_cash_flow
+    # total_portfolio_value_try += net_cash_flow
 
     # Fetch latest EUR rate and calculate EUR value
     latest_eur_rate = get_latest_eur_try_rate()
@@ -238,3 +260,46 @@ def get_profit_loss(db: Session = Depends(get_db)):
             "total_value_eur": round(total_portfolio_value_eur, 2)
         }
     }
+
+@router.post("/events/add", status_code=201)
+def add_event(payload: schemas.EventPayload, db: Session = Depends(get_db)):
+    """
+    Parses a financial event message (dividend or split), calculates its impact
+    based on historical holdings, and logs it as a new transaction.
+    """
+    event_data = parse_event_message(payload.message)
+
+    if not event_data:
+        raise HTTPException(status_code=400, detail="Could not parse event message.")
+
+    event_type = event_data["type"]
+    symbol = event_data["symbol"]
+    event_date = event_data["date"]
+
+    shares_held = get_holdings_on_date(db, symbol, event_date)
+    if shares_held <= 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No shares of {symbol} held on {event_date} to apply the event to."
+        )
+
+    if event_type == "dividend":
+        total_dividend = shares_held * (event_data["percentage"] / 100.0)
+        tx_schema = schemas.TransactionCreate(
+            date=event_date, type='dividend', symbol=symbol,
+            quantity=0, price=total_dividend, note=f"Dividend ({event_data['percentage']}%)"
+        )
+        created_tx = crud.create_transaction(db, tx_schema)
+        return {"status": "success", "transaction": created_tx}
+
+    if event_type == "split":
+        new_shares = shares_held * (event_data["ratio"] - 1)
+        tx_schema = schemas.TransactionCreate(
+            date=event_date, type='split', symbol=symbol,
+            quantity=new_shares, price=0, note=f"Stock Split ({event_data['ratio']}-for-1)"
+        )
+        created_tx = crud.create_transaction(db, tx_schema)
+        return {"status": "success", "transaction": created_tx}
+    
+    # This should not be reached if parser is correct
+    raise HTTPException(status_code=500, detail="Unhandled event type.")

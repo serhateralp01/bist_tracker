@@ -23,7 +23,11 @@ def get_historical_data(symbols: List[str], start_date: date, end_date: date) ->
             else:
                 formatted_symbols.append(s)
 
-        data = yf.download(formatted_symbols, start=start_date, end=end_date, progress=False)
+        # yfinance expects symbols separated by spaces
+        ticker_string = " ".join(formatted_symbols)
+        
+        # Fetch data
+        data = yf.download(ticker_string, start=start_date, end=end_date, progress=False, auto_adjust=True)
         
         if data.empty:
             return pd.DataFrame()

@@ -22,7 +22,7 @@ class Transaction(TransactionBase):
     value_eur: Optional[float] = None
 
     class Config:
-        from_attributes = True
+        orm_mode = True
 
 # Schema for individual profit/loss records
 class ProfitLoss(BaseModel):
@@ -43,3 +43,6 @@ class PortfolioValue(BaseModel):
     date: str
     value_try: float
     value_eur: float
+
+class EventPayload(BaseModel):
+    message: str
