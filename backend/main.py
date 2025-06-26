@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from backend.schemas import Transaction
 from backend.utils.stock_fetcher import get_latest_price
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
+from backend.utils.historical_fetcher import get_historical_data
+import pandas as pd
 
 
 app = FastAPI()
@@ -42,23 +44,35 @@ router = APIRouter()
 def get_daily_portfolio_value(db: Session = Depends(get_db)):
     transactions = db.query(models.Transaction).order_by(models.Transaction.date).all()
 
-    holdings = defaultdict(float)
-    cash = 0
-    portfolio_value_by_day = []
-
     if not transactions:
         return []
 
-    current_day = transactions[0].date
-    end_day = datetime.now().date()
+    # 1. Determine date range and symbols needed
+    start_date = transactions[0].date
+    end_date = datetime.now().date()
+    all_symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
+    
+    # We need EURTRY=X for currency conversion
+    fetch_symbols = all_symbols + ['EURTRY=X']
+
+    # 2. Fetch all historical data in one batch
+    hist_data = get_historical_data(fetch_symbols, start_date, end_date)
+    
+    if hist_data.empty:
+        # Fallback or error if we can't get any historical data
+        return []
+
+    # 3. Iterate through time and calculate daily values
+    holdings = defaultdict(float)
+    cash = 0
+    portfolio_value_by_day = []
     tx_index = 0
+    
+    # Use pandas date range for robust iteration
+    for current_day_dt in pd.date_range(start=start_date, end=end_date, freq='D'):
+        current_day = current_day_dt.date()
 
-    def fetch_price(symbol, date):
-        # This should be enhanced to fetch historical prices for true accuracy,
-        # but for now, we use the latest price for simplicity in visualization.
-        return get_latest_price(symbol) or 0
-
-    while current_day <= end_day:
+        # Update holdings based on transactions for the current day
         while tx_index < len(transactions) and transactions[tx_index].date == current_day:
             tx = transactions[tx_index]
             if tx.type == "buy":
@@ -73,16 +87,24 @@ def get_daily_portfolio_value(db: Session = Depends(get_db)):
                 cash -= tx.quantity
             elif tx.type == "dividend":
                 cash += tx.price
-
             tx_index += 1
 
+        # Find the latest available prices for the current day from our batch data
+        try:
+            day_prices = hist_data.asof(current_day_dt)
+        except KeyError:
+            continue # Skip if date is out of range of our historical data
+
+        # Calculate total portfolio value in TRY
         total_try = cash
         for symbol, qty in holdings.items():
             if qty > 0:
-                total_try += qty * fetch_price(symbol, current_day)
+                symbol_col = f"{symbol}.IS" if not symbol.endswith('.IS') else symbol
+                if symbol_col in day_prices and pd.notna(day_prices[symbol_col]):
+                    total_try += qty * day_prices[symbol_col]
 
-        # Fetch historical EUR rate for the day
-        eur_rate = get_historical_eur_try_rate(current_day)
+        # Calculate total portfolio value in EUR
+        eur_rate = day_prices['EURTRY=X'] if 'EURTRY=X' in day_prices and pd.notna(day_prices['EURTRY=X']) else None
         total_eur = (total_try / eur_rate) if eur_rate and eur_rate > 0 else 0
         
         portfolio_value_by_day.append({
@@ -90,8 +112,6 @@ def get_daily_portfolio_value(db: Session = Depends(get_db)):
             "value_try": round(total_try, 2),
             "value_eur": round(total_eur, 2)
         })
-
-        current_day += timedelta(days=1)
 
     return portfolio_value_by_day
 

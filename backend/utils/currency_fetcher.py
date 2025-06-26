@@ -1,27 +1,33 @@
 import yfinance as yf
+import pandas as pd
 from datetime import datetime, timedelta
 
 def get_historical_eur_try_rate(date: datetime.date) -> float | None:
     """
     Fetches the historical EUR/TRY exchange rate for a specific date using Yahoo Finance.
-    This function now uses the Ticker.history method for more reliable data fetching.
+    This function is now more robust to handle weekends and holidays efficiently.
     """
     try:
+        # Fetch the last 30 days of data to ensure we have recent history
         ticker = yf.Ticker("EURTRY=X")
-        end_date = date + timedelta(days=1)
-        # Fetch data for the specific day
-        hist = ticker.history(start=date, end=end_date)
+        hist = ticker.history(period="30d")
         
-        if not hist.empty:
+        if hist.empty:
+            print(f"Error: No historical data found for EURTRY=X in the last 30 days.")
+            return None
+
+        # Convert the timezone-aware index to timezone-naive for comparison
+        hist.index = hist.index.tz_localize(None)
+
+        # Use pandas 'asof' to find the most recent price for the given date
+        # This is the most efficient way to handle non-trading days (weekends/holidays)
+        closest_price = hist.asof(pd.to_datetime(date))
+        
+        if pd.notna(closest_price['Close']):
+            return closest_price['Close']
+        else:
+            # Fallback if asof fails for some reason
             return hist['Close'].iloc[-1]
-        
-        # If no data for the day (e.g., weekend), backtrack to find the last known rate
-        for i in range(1, 7):
-            prev_date_start = date - timedelta(days=i)
-            prev_date_end = date - timedelta(days=i-1)
-            hist = ticker.history(start=prev_date_start, end=prev_date_end)
-            if not hist.empty:
-                return hist['Close'].iloc[-1]
 
     except Exception as e:
         print(f"Error fetching EUR/TRY rate for {date}: {e}")
