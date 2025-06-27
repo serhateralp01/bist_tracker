@@ -1,7 +1,9 @@
 @echo off
-REM BIST Portfolio Tracker - Windows Startup Script
+REM BIST Portfolio Tracker - Start Script (Windows)
+REM v0.2.1 - Fixed multiprocessing issues
 
-echo 🚀 Starting BIST Portfolio Tracker...
+echo 🚀 BIST Portfolio Tracker v0.2.1
+echo =================================
 
 REM Check if virtual environment exists
 if not exist "venv" (
@@ -10,25 +12,32 @@ if not exist "venv" (
     exit /b 1
 )
 
+echo 📦 Activating virtual environment...
+call venv\Scripts\activate
+
+echo 🔧 Starting backend server...
+start /B python run_backend.py
+
+REM Wait a moment for backend to start
+timeout /t 3 /nobreak >nul
+
+echo ✅ Backend server started
+echo 📖 API Documentation: http://127.0.0.1:8000/docs
+
+echo 🎨 Starting frontend server...
+cd frontend
+
 REM Check if node_modules exists
-if not exist "frontend\node_modules" (
-    echo ❌ Node modules not found. Please run setup.bat first.
-    pause
-    exit /b 1
+if not exist "node_modules" (
+    echo 📦 Installing frontend dependencies...
+    npm install
 )
 
-echo 📡 Starting backend server...
-REM Start backend
-start "Backend Server" cmd /k "venv\Scripts\activate && uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
+echo 🎉 Starting frontend development server...
+npm start
 
-echo ⚛️ Starting frontend server...
-REM Start frontend
-start "Frontend Server" cmd /k "cd frontend && npm start"
-
-echo ✅ Both servers started!
 echo 🌐 Frontend: http://localhost:3000
-echo 🔧 Backend: http://localhost:8000
-echo 📚 API Docs: http://localhost:8000/docs
-echo.
-echo Press any key to close this window...
+echo 🔧 Backend: http://127.0.0.1:8000
+echo 📖 API Docs: http://127.0.0.1:8000/docs
+
 pause 

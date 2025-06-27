@@ -2,13 +2,29 @@
 import uvicorn
 import os
 import sys
+import multiprocessing
 
-if __name__ == "__main__":
+def run_server():
+    """Run the FastAPI server with proper configuration"""
     # Add the project root to the Python path
-    # This allows running the script from anywhere and ensures 'backend' is a package
     project_root = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, project_root)
 
-    # Use the module-based path for uvicorn
-    # This tells uvicorn to treat 'backend' as a package and 'main' as a module within it.
-    uvicorn.run("backend.main:app", host="127.0.0.1", port=8000, reload=True, reload_dirs=["backend"])
+    # Use the module-based path for uvicorn with proper reload configuration
+    uvicorn.run(
+        "backend.main:app", 
+        host="127.0.0.1", 
+        port=8000, 
+        reload=True, 
+        reload_dirs=["backend"],
+        # Fix multiprocessing issues on macOS
+        workers=1,
+        # Use threading instead of multiprocessing for reload
+        use_colors=True,
+        access_log=True
+    )
+
+if __name__ == "__main__":
+    # Protect the entry point for multiprocessing
+    multiprocessing.set_start_method('spawn', force=True)
+    run_server()
