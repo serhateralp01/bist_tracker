@@ -15,11 +15,10 @@ from backend.schemas import Transaction
 from backend.utils.stock_fetcher import get_latest_price, get_bist100_data
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
 from backend.utils.historical_fetcher import (
-    get_historical_data, 
+    get_historical_data,
     get_stock_historical_chart,
     get_portfolio_timeline_data,
     get_market_comparison_data,
-    get_correlation_analysis,
     get_risk_metrics
 )
 from backend.utils.data_import_export import (
@@ -461,48 +460,12 @@ def get_portfolio_timeline(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error generating timeline: {str(e)}")
 
 @app.get("/analytics/market-comparison/{symbol}")
-def get_market_comparison(symbol: str, period: str = "1y", comparison_symbols: str = None):
-    """
-    Compare a stock's performance against market indices and other stocks
-    
-    Parameters:
-    - symbol: Primary stock symbol
-    - period: Time period for comparison
-    - comparison_symbols: Comma-separated list of symbols to compare against
-    """
+async def get_market_comparison(symbol: str, period: str = "1y", db: Session = Depends(get_db)):
     try:
-        comp_symbols = None
-        if comparison_symbols:
-            comp_symbols = [s.strip().upper() for s in comparison_symbols.split(',')]
-        
-        data = get_market_comparison_data(symbol, comp_symbols, period)
-        if "error" in data:
-            raise HTTPException(status_code=404, detail=data["error"])
+        data = get_market_comparison_data(db, symbol, period)
         return data
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating comparison: {str(e)}")
-
-@app.get("/analytics/correlation")
-def get_portfolio_correlation(db: Session = Depends(get_db), period: str = "1y"):
-    """
-    Calculate correlation matrix between stocks in portfolio
-    """
-    try:
-        # Get all symbols from transactions
-        transactions = db.query(models.Transaction).all()
-        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
-        
-        if len(symbols) < 2:
-            return {"error": "Need at least 2 stocks for correlation analysis"}
-        
-        data = get_correlation_analysis(symbols, period)
-        if "error" in data:
-            raise HTTPException(status_code=404, detail=data["error"])
-        return data
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error calculating correlations: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/analytics/risk-metrics")
 def get_portfolio_risk_metrics(db: Session = Depends(get_db), period: str = "1y"):
@@ -510,17 +473,31 @@ def get_portfolio_risk_metrics(db: Session = Depends(get_db), period: str = "1y"
     Calculate various risk metrics for portfolio stocks
     """
     try:
-        # Get all symbols from transactions
-        transactions = db.query(models.Transaction).all()
-        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
-        
-        if not symbols:
-            return {"error": "No stocks found in portfolio"}
-        
-        data = get_risk_metrics(symbols, period)
+        data = get_risk_metrics(db, period)
         if "error" in data:
             raise HTTPException(status_code=404, detail=data["error"])
         return data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating risk metrics: {str(e)}")
+
+@app.get("/portfolio/first-purchase-dates")
+def get_first_purchase_dates(db: Session = Depends(get_db)):
+    """
+    Get the first purchase date for each stock symbol
+    """
+    try:
+        # Get all buy transactions
+        buy_transactions = db.query(models.Transaction).filter(
+            models.Transaction.type == 'buy',
+            models.Transaction.symbol.isnot(None)
+        ).order_by(models.Transaction.date).all()
+        
+        first_purchases = {}
+        for tx in buy_transactions:
+            if tx.symbol not in first_purchases:
+                first_purchases[tx.symbol] = tx.date.strftime("%Y-%m-%d")
+        
+        return first_purchases
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting first purchase dates: {str(e)}")
