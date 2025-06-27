@@ -11,7 +11,7 @@ from fastapi import APIRouter
 from collections import defaultdict
 from datetime import datetime, timedelta, date
 from backend.schemas import Transaction
-from backend.utils.stock_fetcher import get_latest_price
+from backend.utils.stock_fetcher import get_latest_price, get_bist100_data
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
 from backend.utils.historical_fetcher import get_historical_data
 import pandas as pd
@@ -140,6 +140,25 @@ app.include_router(router)
 @app.get("/")
 def root():
     return {"message": "BIST Portfolio Tracker Backend is running."}
+
+@app.get("/bist100")
+def get_bist100():
+    """
+    Get current BIST 100 index data
+    """
+    data = get_bist100_data()
+    if data:
+        return data
+    else:
+        # Return fallback data if API fails
+        return {
+            "value": 0,
+            "change": 0,
+            "change_percent": 0,
+            "volume": "N/A",
+            "last_update": datetime.now().strftime("%H:%M"),
+            "error": "Could not fetch BIST 100 data"
+        }
 
 @app.get("/transactions", response_model=list[schemas.Transaction])
 def read_transactions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
