@@ -3,8 +3,8 @@ import io
 from typing import List, Dict, Any, Optional
 from datetime import datetime, date
 from sqlalchemy.orm import Session
-from backend import models, schemas
-from backend.utils.currency_fetcher import get_historical_eur_try_rate
+from .. import models, schemas
+from .currency_fetcher import get_historical_eur_try_rate
 
 def export_transactions_to_csv(db: Session) -> str:
     """

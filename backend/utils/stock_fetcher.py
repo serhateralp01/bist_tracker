@@ -1,15 +1,30 @@
 import yfinance as yf
 from typing import Dict, Optional
 from datetime import datetime, timedelta
+import logging
+import time
+
+# Configure structured logging if not already configured
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def log_api_call(func_name, symbol, status, detail=""):
+    logging.info(f"API_CALL - Function: {func_name}, Symbol: {symbol}, Status: {status}, Detail: {detail}")
 
 def get_latest_price(symbol: str) -> float:
+    start_time = time.time()
     try:
         ticker = yf.Ticker(symbol + ".IS")
         hist = ticker.history(period="1d")
+        duration = time.time() - start_time
         if hist.empty:
+            log_api_call('get_latest_price', symbol, 'FAIL', f'Duration: {duration:.2f}s, Reason: History is empty')
             return None
+        log_api_call('get_latest_price', symbol, 'SUCCESS', f'Duration: {duration:.2f}s')
         return round(hist['Close'].iloc[-1], 2)
-    except Exception:
+    except Exception as e:
+        duration = time.time() - start_time
+        log_api_call('get_latest_price', symbol, 'EXCEPTION', f'Duration: {duration:.2f}s, Error: {e}')
         return None
 
 def get_bist100_data() -> Optional[Dict]:

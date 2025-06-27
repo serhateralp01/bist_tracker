@@ -38,16 +38,33 @@ def parse_event_message(message: str):
             "percentage": float(percentage_str)
         }
 
-    # Regex for stock split with DD.MM.YYYY date
-    split_match = re.search(r"(\d{2}\.\d{2}\.\d{4}):.*? (\w+)\.E.*?%([\d\.]+) bedelsiz", message, re.IGNORECASE)
+    # Regex for stock split/bonus shares with DD.MM.YYYY date - improved to handle integer percentages
+    split_match = re.search(r"(\d{2}\.\d{2}\.\d{4}):.*? (\w+)\.E.*?%(\d+(?:\.\d+)?) bedelsiz.*?artirimi", message, re.IGNORECASE)
     if split_match:
         date_str, symbol, percentage_str = split_match.groups()
-        ratio = 1 + (float(percentage_str) / 100.0)
+        percentage = float(percentage_str)
+        # Convert percentage to ratio (e.g., 1000% = 10 additional shares per 1 share = 11:1 total ratio)
+        ratio = 1 + (percentage / 100.0)
         return {
             "type": "split",
             "date": datetime.strptime(date_str, "%d.%m.%Y").date(),
             "symbol": symbol,
-            "ratio": ratio
+            "ratio": ratio,
+            "percentage": percentage
+        }
+
+    # Fallback regex for older format without 'artirimi'
+    split_match_old = re.search(r"(\d{2}\.\d{2}\.\d{4}):.*? (\w+)\.E.*?%(\d+(?:\.\d+)?) bedelsiz", message, re.IGNORECASE)
+    if split_match_old:
+        date_str, symbol, percentage_str = split_match_old.groups()
+        percentage = float(percentage_str)
+        ratio = 1 + (percentage / 100.0)
+        return {
+            "type": "split",
+            "date": datetime.strptime(date_str, "%d.%m.%Y").date(),
+            "symbol": symbol,
+            "ratio": ratio,
+            "percentage": percentage
         }
 
     return None 

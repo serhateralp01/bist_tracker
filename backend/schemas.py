@@ -32,6 +32,8 @@ class ProfitLoss(BaseModel):
     current_value: float
     profit_loss: float
     current_price: float
+    average_purchase_price: Optional[float] = 0
+    return_percentage: Optional[float] = 0
 
 # Schema for the overall portfolio analysis endpoint
 class PortfolioAnalysis(BaseModel):
