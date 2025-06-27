@@ -28,6 +28,10 @@ KNOWN_STOCK_SPLITS = {
 # Cache for successful sector lookups (in-memory cache)
 _sector_cache = {}
 
+# Cache for dashboard metrics to ensure stability within short time windows
+_dashboard_cache = {}
+_cache_ttl = 30  # 30 seconds cache time
+
 def log_api_call(func_name, symbol, status, detail=""):
     logging.info(f"API_CALL - Function: {func_name}, Symbol: {symbol}, Status: {status}, Detail: {detail}")
 
@@ -1413,6 +1417,15 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
     Uses transaction-based performance accounting for splits and dividends
     """
     try:
+        # Check cache first to ensure stability within short time windows
+        cache_key = "dashboard_metrics"
+        current_time = time.time()
+        
+        if cache_key in _dashboard_cache:
+            cached_data, timestamp = _dashboard_cache[cache_key]
+            if current_time - timestamp < _cache_ttl:
+                return cached_data
+        
         holdings = get_current_holdings_with_quantities(db)
         if not holdings:
             return {"error": "No stocks currently held in portfolio"}
@@ -1430,22 +1443,44 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
         stock_performances = []
         
         # --- Start of Optimization ---
-        # 1. Get all symbols at once
-        all_symbols = list(holdings.keys())
+        # 1. Get all symbols at once and sort for consistent ordering
+        all_symbols = sorted(list(holdings.keys()))  # Sort for deterministic order
         
-        # 2. Fetch 30-day historical data for all symbols in one batch
+        # 2. Fetch current prices and 30-day historical data in batches for consistency
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=30)
+        
+        # Get both current prices and historical data in one batch call
         all_hist_data = get_historical_data(all_symbols, start_date, end_date)
+        
+        # Extract current prices from the historical data for consistency
+        current_prices = {}
+        if not all_hist_data.empty:
+            for symbol in all_symbols:
+                symbol_col = f"{symbol}.IS"
+                if symbol_col in all_hist_data.columns:
+                    symbol_data = all_hist_data[symbol_col].dropna()
+                    if len(symbol_data) > 0:
+                        current_prices[symbol] = float(symbol_data.iloc[-1])
+                    else:
+                        current_prices[symbol] = 0.0
+                else:
+                    current_prices[symbol] = 0.0
         # --- End of Optimization ---
 
         # Calculate individual stock metrics using user's actual performance data
-        for symbol, quantity in holdings.items():
+        # Process symbols in sorted order for consistent results
+        for symbol in sorted(holdings.keys()):
             try:
-                current_price = get_latest_price(symbol) or 0
+                quantity = holdings[symbol]  # Get quantity for this symbol
+                # Use batch-fetched current price for consistency
+                current_price = current_prices.get(symbol, 0.0)
                 if current_price == 0:
-                    print(f"Could not get current price for {symbol}. Skipping from dashboard metrics.")
-                    continue
+                    # Fallback to individual API call only if batch failed
+                    current_price = get_latest_price(symbol) or 0
+                    if current_price == 0:
+                        print(f"Could not get current price for {symbol}. Skipping from dashboard metrics.")
+                        continue
                 position_value = float(quantity) * float(current_price)
                 total_portfolio_value += position_value
                 
@@ -1485,14 +1520,15 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
                         if len(symbol_data) >= 2:
                             start_price = float(symbol_data.iloc[0])
                             end_price = float(symbol_data.iloc[-1])
-                            performance_30d = ((end_price - start_price) / start_price) * 100 if start_price > 0 else 0
+                            # Use high precision and consistent rounding
+                            performance_30d = round(((end_price - start_price) / start_price) * 100, 4) if start_price > 0 else 0.0
                             price_change = end_price - start_price
-                            gain_loss_30d_try = price_change * float(quantity)
+                            gain_loss_30d_try = round(price_change * float(quantity), 4)
                 
                 stock_performances.append({
                     'symbol': symbol,
                     'position_value': round(position_value, 2),
-                    'performance_30d': round(performance_30d, 2),
+                    'performance_30d': round(performance_30d, 4),  # Higher precision for stable sorting
                     'gain_loss_30d_try': round(gain_loss_30d_try, 2),
                     'current_price': round(float(current_price), 2),
                     'user_return': round(user_perf['return_percentage'], 2),
@@ -1504,10 +1540,17 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
                 print(f"Error calculating dashboard metrics for {symbol}: {e}")
                 continue
         
-        # Sort by 30-day performance for top/worst performers
-        # Separate stocks into positive and negative performance for accurate top/worst lists
-        positive_performers_30d = sorted([p for p in stock_performances if p['performance_30d'] >= 0], key=lambda x: x['performance_30d'], reverse=True)
-        negative_performers_30d = sorted([p for p in stock_performances if p['performance_30d'] < 0], key=lambda x: x['performance_30d'])
+        # Sort by 30-day performance for top/worst performers with stable sorting
+        # Use multiple criteria for deterministic ordering: performance_30d, position_value, symbol
+        positive_performers_30d = sorted(
+            [p for p in stock_performances if p['performance_30d'] >= 0], 
+            key=lambda x: (x['performance_30d'], x['position_value'], x['symbol']), 
+            reverse=True
+        )
+        negative_performers_30d = sorted(
+            [p for p in stock_performances if p['performance_30d'] < 0], 
+            key=lambda x: (x['performance_30d'], -x['position_value'], x['symbol'])  # Note: negative position_value for secondary sort
+        )
 
         # Portfolio health metrics
         num_holdings = len(holdings)
@@ -1536,8 +1579,9 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
         
         # Concentration Risk
         if total_portfolio_value > 0 and stock_performances:
-            stock_performances.sort(key=lambda x: x['position_value'], reverse=True)
-            top_3_positions = stock_performances[:3]
+            # Create a separate copy for concentration analysis to avoid affecting performance sorting
+            concentration_sorted = sorted(stock_performances, key=lambda x: (x['position_value'], x['symbol']), reverse=True)
+            top_3_positions = concentration_sorted[:3]
             top_3_value = sum(p['position_value'] for p in top_3_positions)
             
             dashboard_metrics['concentration_risk'] = {
@@ -1560,6 +1604,9 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
         
         dashboard_metrics['top_performers'] = positive_performers_30d[:5]
         dashboard_metrics['worst_performers'] = negative_performers_30d[:5]
+        
+        # Cache the result for stability
+        _dashboard_cache[cache_key] = (dashboard_metrics, current_time)
         
         return dashboard_metrics
         
