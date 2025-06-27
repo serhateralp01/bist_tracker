@@ -419,151 +419,495 @@ def get_market_comparison_data(db: Session, symbol: str, period: str = "1y") -> 
     except Exception as e:
         return {"error": f"Error fetching comparison data: {str(e)}"}
 
-def calculate_risk_score(volatility: float, sharpe_ratio: float, max_drawdown: float, annual_return: float) -> int:
+def calculate_advanced_risk_score(volatility: float, sharpe_ratio: float, max_drawdown: float, 
+                                annual_return: float, sortino_ratio: float = 0, beta: float = 1,
+                                momentum_6m: float = 0, rsi: float = 50) -> Dict[str, Any]:
     """
-    Calculate a comprehensive risk score (0-100, lower is riskier)
+    Calculate a comprehensive risk score with advanced metrics (0-100, higher is better)
     """
-    score = 50  # Start with neutral score
+    base_score = 50  # Start with neutral score
     
-    # Volatility component (30% weight)
-    if volatility < 20:
-        score += 15  # Low volatility is good
-    elif volatility < 35:
-        score += 5   # Moderate volatility
-    elif volatility < 50:
-        score -= 5   # High volatility
-    else:
-        score -= 15  # Very high volatility
-    
-    # Sharpe ratio component (25% weight)
-    if sharpe_ratio > 1.0:
-        score += 12
-    elif sharpe_ratio > 0.5:
-        score += 8
-    elif sharpe_ratio > 0:
-        score += 3
-    else:
-        score -= 10
-    
-    # Max drawdown component (25% weight)
-    if max_drawdown > -10:
-        score += 12  # Small drawdowns
-    elif max_drawdown > -20:
-        score += 6   # Moderate drawdowns
-    elif max_drawdown > -35:
-        score -= 3   # Large drawdowns
-    else:
-        score -= 12  # Very large drawdowns
-    
-    # Annual return component (20% weight)
-    if annual_return > 15:
-        score += 10
-    elif annual_return > 5:
-        score += 5
-    elif annual_return > -5:
-        score += 0
-    else:
-        score -= 8
-    
-    return max(0, min(100, score))
-
-def generate_investment_signal(performance: float, volatility: float, sharpe_ratio: float, 
-                             max_drawdown: float, annual_return: float, days_held: int) -> Dict[str, str]:
-    """
-    Generate actionable investment recommendations based on metrics
-    """
-    signal_strength = "NEUTRAL"
-    action = "HOLD"
-    reasoning = []
-    
-    # Performance-based signals
-    if performance > 25:
-        reasoning.append("Strong positive performance (+25%)")
-        if volatility < 30:
-            signal_strength = "STRONG_HOLD"
-            action = "STRONG_BUY"
-        else:
-            signal_strength = "HOLD"
-            action = "TAKE_PROFIT"
-    elif performance > 10:
-        reasoning.append("Good performance (+10%)")
-        action = "HOLD"
-    elif performance < -20:
-        reasoning.append("Poor performance (-20%)")
-        if days_held > 365:
-            action = "CONSIDER_SELL"
-            signal_strength = "WEAK"
-        else:
-            action = "MONITOR_CLOSELY"
-    elif performance < -10:
-        reasoning.append("Negative performance (-10%)")
-        action = "MONITOR_CLOSELY"
-    
-    # Risk-based adjustments
-    if volatility > 50:
-        reasoning.append("High volatility (>50%)")
-        if action == "STRONG_BUY":
-            action = "BUY_SMALL"
-        elif action == "HOLD":
-            action = "REDUCE_POSITION"
+    # Core Risk Metrics (60% weight)
+    # Volatility component (20% weight)
+    if volatility < 15:
+        volatility_score = 20  # Very low volatility - excellent
     elif volatility < 25:
-        reasoning.append("Low volatility (<25%)")
-        if action == "HOLD" and performance > 5:
-            action = "BUY_MORE"
+        volatility_score = 15  # Low volatility - good
+    elif volatility < 35:
+        volatility_score = 10  # Moderate volatility - fair
+    elif volatility < 50:
+        volatility_score = 0   # High volatility - neutral
+    elif volatility < 70:
+        volatility_score = -10 # Very high volatility - poor
+    else:
+        volatility_score = -20 # Extreme volatility - very poor
     
-    # Sharpe ratio considerations
-    if sharpe_ratio < -0.5:
-        reasoning.append("Poor risk-adjusted returns")
-        if action not in ["CONSIDER_SELL", "REDUCE_POSITION"]:
-            action = "REDUCE_POSITION"
+    # Sharpe ratio component (20% weight) 
+    if sharpe_ratio > 1.5:
+        sharpe_score = 20  # Excellent risk-adjusted returns
     elif sharpe_ratio > 1.0:
-        reasoning.append("Excellent risk-adjusted returns")
-        if action == "HOLD":
-            action = "BUY_MORE"
+        sharpe_score = 15  # Very good
+    elif sharpe_ratio > 0.5:
+        sharpe_score = 10  # Good
+    elif sharpe_ratio > 0:
+        sharpe_score = 5   # Fair
+    elif sharpe_ratio > -0.5:
+        sharpe_score = -5  # Poor
+    else:
+        sharpe_score = -15 # Very poor
     
-    # Drawdown warnings
-    if max_drawdown < -40:
-        reasoning.append("Large historical drawdowns")
-        signal_strength = "WEAK"
-        if action in ["STRONG_BUY", "BUY_MORE"]:
-            action = "BUY_SMALL"
+    # Max drawdown component (20% weight)
+    if max_drawdown > -5:
+        drawdown_score = 20  # Minimal drawdowns - excellent
+    elif max_drawdown > -10:
+        drawdown_score = 15  # Small drawdowns - very good
+    elif max_drawdown > -20:
+        drawdown_score = 10  # Moderate drawdowns - good
+    elif max_drawdown > -35:
+        drawdown_score = 0   # Large drawdowns - neutral
+    elif max_drawdown > -50:
+        drawdown_score = -10 # Very large drawdowns - poor
+    else:
+        drawdown_score = -20 # Extreme drawdowns - very poor
+    
+    # Advanced Metrics (25% weight)
+    # Sortino ratio (better than Sharpe for downside risk) (8% weight)
+    if sortino_ratio > 1.0:
+        sortino_score = 8
+    elif sortino_ratio > 0.5:
+        sortino_score = 5
+    elif sortino_ratio > 0:
+        sortino_score = 2
+    else:
+        sortino_score = -5
+    
+    # Beta (market correlation) (8% weight)
+    if 0.8 <= beta <= 1.2:
+        beta_score = 8   # Well-correlated with market
+    elif 0.6 <= beta <= 1.4:
+        beta_score = 5   # Moderately correlated
+    elif beta < 0.6:
+        beta_score = 3   # Low correlation (defensive)
+    else:
+        beta_score = -5  # High beta (aggressive)
+    
+    # 6-month momentum (9% weight)
+    if momentum_6m > 15:
+        momentum_score = 9   # Strong positive momentum
+    elif momentum_6m > 5:
+        momentum_score = 6   # Good momentum
+    elif momentum_6m > -5:
+        momentum_score = 3   # Neutral momentum
+    elif momentum_6m > -15:
+        momentum_score = -3  # Poor momentum
+    else:
+        momentum_score = -9  # Very poor momentum
+    
+    # Performance Quality (15% weight)
+    # Annual return component (15% weight)
+    if annual_return > 25:
+        return_score = 15  # Exceptional returns
+    elif annual_return > 15:
+        return_score = 12  # Excellent returns
+    elif annual_return > 10:
+        return_score = 8   # Good returns
+    elif annual_return > 5:
+        return_score = 5   # Fair returns
+    elif annual_return > 0:
+        return_score = 2   # Modest returns
+    elif annual_return > -10:
+        return_score = -5  # Poor returns
+    else:
+        return_score = -15 # Very poor returns
+    
+    # Calculate final score
+    final_score = (base_score + volatility_score + sharpe_score + drawdown_score + 
+                  sortino_score + beta_score + momentum_score + return_score)
+    
+    # Ensure score is between 0 and 100
+    final_score = max(0, min(100, final_score))
+    
+    # Calculate risk categories
+    if final_score >= 80:
+        risk_category = "VERY_LOW"
+        risk_description = "Excellent risk-reward profile"
+    elif final_score >= 65:
+        risk_category = "LOW"
+        risk_description = "Good risk-reward profile"
+    elif final_score >= 50:
+        risk_category = "MODERATE"
+        risk_description = "Balanced risk-reward profile"
+    elif final_score >= 35:
+        risk_category = "HIGH"
+        risk_description = "Higher risk investment"
+    else:
+        risk_category = "VERY_HIGH"
+        risk_description = "High risk investment"
     
     return {
-        'action': action,
-        'strength': signal_strength,
-        'reasoning': "; ".join(reasoning),
-        'confidence': "HIGH" if len(reasoning) >= 3 else "MEDIUM" if len(reasoning) >= 2 else "LOW"
+        'risk_score': int(final_score),
+        'risk_category': risk_category,
+        'risk_description': risk_description,
+        'component_scores': {
+            'volatility': volatility_score,
+            'sharpe_ratio': sharpe_score,
+            'max_drawdown': drawdown_score,
+            'sortino_ratio': sortino_score,
+            'beta': beta_score,
+            'momentum_6m': momentum_score,
+            'annual_return': return_score
+        }
     }
 
-def categorize_performance(annual_return: float, volatility: float, sharpe_ratio: float) -> Dict[str, str]:
+def generate_enhanced_investment_signal(performance: float, volatility: float, sharpe_ratio: float, 
+                                      max_drawdown: float, annual_return: float, days_held: int,
+                                      risk_score: int, grade_points: float, momentum_6m: float = 0) -> Dict[str, str]:
     """
-    Categorize stock performance into grades
+    Generate sophisticated investment recommendations based on comprehensive metrics
     """
-    if annual_return > 20 and volatility < 30 and sharpe_ratio > 0.7:
-        grade = "A+"
-        description = "Excellent: High returns, low risk"
-    elif annual_return > 15 and volatility < 40 and sharpe_ratio > 0.5:
-        grade = "A"
-        description = "Very Good: Strong returns, manageable risk"
-    elif annual_return > 10 and volatility < 50:
-        grade = "B+"
-        description = "Good: Positive returns, moderate risk"
+    reasoning_factors = []
+    confidence_score = 0
+    
+    # Performance analysis
+    if performance > 30:
+        reasoning_factors.append("Exceptional performance (+30%)")
+        confidence_score += 25
+        base_action = "STRONG_BUY"
+    elif performance > 15:
+        reasoning_factors.append("Strong performance (+15%)")
+        confidence_score += 20
+        base_action = "BUY_MORE"
+    elif performance > 5:
+        reasoning_factors.append("Positive performance (+5%)")
+        confidence_score += 10
+        base_action = "HOLD"
+    elif performance > -10:
+        reasoning_factors.append("Minor losses (-10%)")
+        confidence_score += 5
+        base_action = "MONITOR"
+    elif performance > -25:
+        reasoning_factors.append("Significant losses (-25%)")
+        confidence_score -= 10
+        base_action = "REDUCE_POSITION"
+    else:
+        reasoning_factors.append("Major losses (-25%+)")
+        confidence_score -= 20
+        base_action = "CONSIDER_SELL"
+    
+    # Risk-adjusted performance analysis
+    if sharpe_ratio > 1.5:
+        reasoning_factors.append("Excellent risk-adjusted returns (Sharpe > 1.5)")
+        confidence_score += 20
+        if base_action in ["HOLD", "MONITOR"]:
+            base_action = "BUY_MORE"
+    elif sharpe_ratio > 1.0:
+        reasoning_factors.append("Good risk-adjusted returns (Sharpe > 1.0)")
+        confidence_score += 15
+    elif sharpe_ratio > 0.5:
+        reasoning_factors.append("Fair risk-adjusted returns")
+        confidence_score += 5
+    elif sharpe_ratio < 0:
+        reasoning_factors.append("Poor risk-adjusted returns")
+        confidence_score -= 15
+        if base_action == "BUY_MORE":
+            base_action = "HOLD"
+        elif base_action == "HOLD":
+            base_action = "MONITOR"
+    
+    # Volatility considerations
+    if volatility > 60:
+        reasoning_factors.append("Very high volatility (>60%)")
+        confidence_score -= 15
+        if base_action in ["STRONG_BUY", "BUY_MORE"]:
+            base_action = "BUY_SMALL"
+    elif volatility > 40:
+        reasoning_factors.append("High volatility (>40%)")
+        confidence_score -= 10
+        if base_action == "STRONG_BUY":
+            base_action = "BUY_MORE"
+    elif volatility < 25:
+        reasoning_factors.append("Low volatility (<25%)")
+        confidence_score += 10
+        if base_action == "HOLD" and performance > 0:
+            base_action = "BUY_MORE"
+    
+    # Drawdown analysis
+    if max_drawdown < -40:
+        reasoning_factors.append("Severe historical drawdowns (-40%+)")
+        confidence_score -= 20
+        if base_action in ["STRONG_BUY", "BUY_MORE"]:
+            base_action = "BUY_SMALL"
+    elif max_drawdown < -25:
+        reasoning_factors.append("Large historical drawdowns (-25%)")
+        confidence_score -= 10
+    elif max_drawdown > -10:
+        reasoning_factors.append("Minimal historical drawdowns")
+        confidence_score += 15
+    
+    # Time-based factors
+    if days_held < 90:
+        reasoning_factors.append("Recently acquired (< 3 months)")
+        confidence_score += 5
+    elif days_held > 730:
+        reasoning_factors.append("Long-term holding (2+ years)")
+        if performance < -15:
+            reasoning_factors.append("Long-term underperformance suggests reconsideration")
+            confidence_score -= 10
+        else:
+            confidence_score += 5
+    
+    # Risk score integration
+    if risk_score >= 80:
+        reasoning_factors.append("Very low risk profile")
+        confidence_score += 15
+        if base_action == "MONITOR":
+            base_action = "HOLD"
+    elif risk_score >= 65:
+        reasoning_factors.append("Low risk profile")
+        confidence_score += 10
+    elif risk_score < 40:
+        reasoning_factors.append("High risk profile")
+        confidence_score -= 15
+        if base_action in ["STRONG_BUY", "BUY_MORE"]:
+            base_action = "BUY_SMALL"
+    
+    # Grade-based adjustments
+    if grade_points >= 4.0:
+        reasoning_factors.append("A-grade investment quality")
+        confidence_score += 20
+        if base_action == "HOLD":
+            base_action = "BUY_MORE"
+    elif grade_points >= 3.0:
+        reasoning_factors.append("B-grade investment quality")
+        confidence_score += 10
+    elif grade_points < 2.0:
+        reasoning_factors.append("Poor investment grade (C- or below)")
+        confidence_score -= 20
+        if base_action not in ["REDUCE_POSITION", "CONSIDER_SELL"]:
+            base_action = "REDUCE_POSITION"
+    
+    # Momentum considerations (if available)
+    if momentum_6m > 15:
+        reasoning_factors.append("Strong positive momentum")
+        confidence_score += 10
+    elif momentum_6m < -15:
+        reasoning_factors.append("Negative momentum trend")
+        confidence_score -= 10
+    
+    # Final action determination based on comprehensive analysis
+    final_actions = {
+        "STRONG_BUY": "STRONG_BUY",
+        "BUY_MORE": "BUY_MORE", 
+        "BUY_SMALL": "BUY_SMALL",
+        "HOLD": "HOLD",
+        "MONITOR": "MONITOR_CLOSELY",
+        "REDUCE_POSITION": "REDUCE_POSITION",
+        "CONSIDER_SELL": "CONSIDER_SELL"
+    }
+    
+    final_action = final_actions.get(base_action, "HOLD")
+    
+    # Determine confidence level
+    if confidence_score >= 60:
+        confidence = "VERY_HIGH"
+    elif confidence_score >= 40:
+        confidence = "HIGH"
+    elif confidence_score >= 20:
+        confidence = "MEDIUM"
+    elif confidence_score >= 0:
+        confidence = "LOW"
+    else:
+        confidence = "VERY_LOW"
+    
+    # Determine signal strength
+    if confidence_score >= 50 and final_action in ["STRONG_BUY", "BUY_MORE"]:
+        strength = "STRONG_POSITIVE"
+    elif confidence_score >= 30 and final_action in ["BUY_MORE", "BUY_SMALL"]:
+        strength = "POSITIVE"
+    elif final_action == "HOLD":
+        strength = "NEUTRAL"
+    elif final_action in ["REDUCE_POSITION", "CONSIDER_SELL"]:
+        strength = "NEGATIVE"
+    else:
+        strength = "NEUTRAL"
+    
+    return {
+        'action': final_action,
+        'strength': strength,
+        'reasoning': "; ".join(reasoning_factors),
+        'confidence': confidence,
+        'confidence_score': confidence_score
+    }
+
+def categorize_advanced_performance(annual_return: float, volatility: float, sharpe_ratio: float,
+                                   sortino_ratio: float = 0, max_drawdown: float = 0, 
+                                   risk_score: int = 50) -> Dict[str, Any]:
+    """
+    Enhanced stock performance categorization with sophisticated grading
+    """
+    # Base score calculation
+    score = 0
+    
+    # Return component (35% weight)
+    if annual_return > 30:
+        return_points = 35
+    elif annual_return > 20:
+        return_points = 30
+    elif annual_return > 15:
+        return_points = 25
+    elif annual_return > 10:
+        return_points = 20
     elif annual_return > 5:
-        grade = "B"
-        description = "Fair: Modest returns"
+        return_points = 15
     elif annual_return > 0:
-        grade = "C"
-        description = "Below Average: Minimal returns"
+        return_points = 10
     elif annual_return > -10:
+        return_points = 5
+    else:
+        return_points = 0
+    
+    # Risk-adjusted return component (25% weight)
+    if sharpe_ratio > 2.0:
+        sharpe_points = 25
+    elif sharpe_ratio > 1.5:
+        sharpe_points = 22
+    elif sharpe_ratio > 1.0:
+        sharpe_points = 18
+    elif sharpe_ratio > 0.5:
+        sharpe_points = 14
+    elif sharpe_ratio > 0:
+        sharpe_points = 10
+    elif sharpe_ratio > -0.5:
+        sharpe_points = 5
+    else:
+        sharpe_points = 0
+    
+    # Volatility component (20% weight) - inverted (lower is better)
+    if volatility < 15:
+        vol_points = 20
+    elif volatility < 25:
+        vol_points = 17
+    elif volatility < 35:
+        vol_points = 14
+    elif volatility < 50:
+        vol_points = 10
+    elif volatility < 70:
+        vol_points = 6
+    else:
+        vol_points = 0
+    
+    # Drawdown resilience (10% weight)
+    if max_drawdown > -10:
+        drawdown_points = 10
+    elif max_drawdown > -20:
+        drawdown_points = 8
+    elif max_drawdown > -35:
+        drawdown_points = 5
+    elif max_drawdown > -50:
+        drawdown_points = 2
+    else:
+        drawdown_points = 0
+    
+    # Sortino ratio bonus (10% weight)
+    if sortino_ratio > 1.5:
+        sortino_points = 10
+    elif sortino_ratio > 1.0:
+        sortino_points = 8
+    elif sortino_ratio > 0.5:
+        sortino_points = 5
+    elif sortino_ratio > 0:
+        sortino_points = 3
+    else:
+        sortino_points = 0
+    
+    # Calculate total score
+    total_score = return_points + sharpe_points + vol_points + drawdown_points + sortino_points
+    
+    # Determine grade and detailed analysis
+    if total_score >= 90:
+        grade = "A+"
+        grade_points = 4.3
+        description = "Outstanding: Exceptional returns with minimal risk"
+        investment_tier = "TIER_1_PREMIUM"
+        recommendation = "Core holding - maximize position"
+    elif total_score >= 85:
+        grade = "A"
+        grade_points = 4.0
+        description = "Excellent: Strong returns with low risk"
+        investment_tier = "TIER_1"
+        recommendation = "Core holding - large position"
+    elif total_score >= 80:
+        grade = "A-"
+        grade_points = 3.7
+        description = "Very Good: Solid returns with manageable risk"
+        investment_tier = "TIER_2"
+        recommendation = "Strong buy - significant position"
+    elif total_score >= 75:
+        grade = "B+"
+        grade_points = 3.3
+        description = "Good: Positive returns with moderate risk"
+        investment_tier = "TIER_2"
+        recommendation = "Buy - moderate position"
+    elif total_score >= 65:
+        grade = "B"
+        grade_points = 3.0
+        description = "Fair: Decent returns with acceptable risk"
+        investment_tier = "TIER_3"
+        recommendation = "Hold - maintain position"
+    elif total_score >= 55:
+        grade = "B-"
+        grade_points = 2.7
+        description = "Below Average: Mixed performance"
+        investment_tier = "TIER_3"
+        recommendation = "Monitor closely"
+    elif total_score >= 45:
+        grade = "C+"
+        grade_points = 2.3
+        description = "Weak: Underperforming with elevated risk"
+        investment_tier = "TIER_4"
+        recommendation = "Consider reducing position"
+    elif total_score >= 35:
+        grade = "C"
+        grade_points = 2.0
+        description = "Poor: Negative returns with high risk"
+        investment_tier = "TIER_4"
+        recommendation = "Reduce position significantly"
+    elif total_score >= 25:
         grade = "D"
-        description = "Poor: Negative returns"
+        grade_points = 1.0
+        description = "Very Poor: Large losses with very high risk"
+        investment_tier = "TIER_5"
+        recommendation = "Consider selling"
     else:
         grade = "F"
-        description = "Very Poor: Large losses"
+        grade_points = 0.0
+        description = "Failing: Severe losses with extreme risk"
+        investment_tier = "TIER_5"
+        recommendation = "Sell immediately"
+    
+    # Add qualitative factors
+    risk_quality = "Low" if risk_score >= 70 else "Moderate" if risk_score >= 50 else "High"
+    return_quality = "Excellent" if annual_return > 20 else "Good" if annual_return > 10 else "Fair" if annual_return > 0 else "Poor"
     
     return {
         'grade': grade,
-        'description': description
+        'grade_points': grade_points,
+        'description': description,
+        'investment_tier': investment_tier,
+        'recommendation': recommendation,
+        'score_breakdown': {
+            'total_score': total_score,
+            'return_points': return_points,
+            'sharpe_points': sharpe_points,
+            'volatility_points': vol_points,
+            'drawdown_points': drawdown_points,
+            'sortino_points': sortino_points
+        },
+        'qualitative_assessment': {
+            'risk_quality': risk_quality,
+            'return_quality': return_quality,
+            'overall_assessment': f"{return_quality} returns with {risk_quality.lower()} risk"
+        }
     }
 
 def calculate_position_recommendation(risk_score: int, performance: float, volatility: float) -> Dict[str, Any]:
@@ -831,19 +1175,24 @@ def get_risk_metrics(db: Session, period: str = "1y") -> Dict[str, Any]:
                 # 6. Additional user-specific metrics
                 current_vs_cost_performance = user_perf['return_percentage']
                 
-                # 7. Calculate risk-adjusted scores and investment recommendations
-                risk_score = calculate_risk_score(volatility, sharpe_ratio, max_drawdown, actual_annualized_return)
-                investment_signal = generate_investment_signal(
-                    current_vs_cost_performance, volatility, sharpe_ratio, 
-                    max_drawdown, actual_annualized_return, days_held
-                )
+                # 7. Calculate risk-adjusted scores
+                risk_score = calculate_advanced_risk_score(volatility, sharpe_ratio, max_drawdown, actual_annualized_return)
                 
                 # 8. Performance categorization
-                performance_grade = categorize_performance(actual_annualized_return, volatility, sharpe_ratio)
+                performance_grade = categorize_advanced_performance(actual_annualized_return, volatility, sharpe_ratio,
+                                                                     risk_score=risk_score['risk_score'],
+                                                                     max_drawdown=max_drawdown)
+                
+                # 9. Investment recommendations
+                investment_signal = generate_enhanced_investment_signal(
+                    current_vs_cost_performance, volatility, sharpe_ratio, 
+                    max_drawdown, actual_annualized_return, days_held,
+                    risk_score['risk_score'], performance_grade['grade_points']
+                )
                 
                 # 9. Position sizing recommendation
                 position_recommendation = calculate_position_recommendation(
-                    risk_score, current_vs_cost_performance, volatility
+                    risk_score['risk_score'], current_vs_cost_performance, volatility
                 )
                 
                 risk_metrics[symbol] = {
@@ -857,7 +1206,9 @@ def get_risk_metrics(db: Session, period: str = "1y") -> Dict[str, Any]:
                     'cost_basis': round(user_perf['cost_basis'], 2),
                     'current_value': round(user_perf['current_value'], 2),
                     'user_avg_price': round(user_perf['average_purchase_price'], 2),
-                    'risk_score': risk_score,
+                    'risk_score': risk_score['risk_score'],
+                    'risk_category': risk_score['risk_category'],
+                    'risk_description': risk_score['risk_description'],
                     'investment_signal': investment_signal,
                     'performance_grade': performance_grade,
                     'position_recommendation': position_recommendation
