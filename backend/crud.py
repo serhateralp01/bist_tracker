@@ -98,3 +98,12 @@ def delete_transaction(db: Session, transaction_id: int):
     db.delete(db_tx)
     db.commit()
     return True
+
+# Alias functions for compatibility
+def get_transaction(db: Session, transaction_id: int):
+    """Alias for get_transaction_by_id"""
+    return get_transaction_by_id(db, transaction_id)
+
+def get_all_transactions(db: Session):
+    """Get all transactions"""
+    return db.query(models.Transaction).all()

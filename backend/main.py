@@ -303,6 +303,15 @@ def parse_broker_message(payload: dict):
         return result
     return {"error": "Mesaj tanınamadı"}
 
+@app.post("/parse/message")
+def parse_message_frontend(payload: dict):
+    """Frontend-compatible endpoint for message parsing"""
+    message = payload.get("text", "")
+    result = parse_message(message)
+    if result:
+        return result
+    return {"error": "Mesaj tanınamadı"}
+
 @router.post("/parse-and-log")
 def parse_and_log(payload: dict, db: Session = Depends(get_db)):
     message = payload.get("text", "")
@@ -630,8 +639,6 @@ def get_sector_allocation(db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating sector analysis: {str(e)}")
 
-
-
 @app.get("/analytics/dashboard-metrics")
 def get_dashboard_analytics(db: Session = Depends(get_db)):
     """
@@ -767,32 +774,36 @@ def get_portfolio_performance_summary(db: Session = Depends(get_db)):
     """
     Get a summary of performance for all currently held stocks
     """
-    symbols = get_current_holdings(db)
-    summary = []
-    
-    for symbol in symbols:
-        perf_data = get_user_performance_since_purchase(db, symbol)
-        if "error" not in perf_data:
-            summary.append({
-                "symbol": symbol,
-                "performance": perf_data
-            })
-    
-    if not summary:
-        return {"error": "No stocks currently held in portfolio"}
-    
-    total_invested = sum(perf["cost_basis"] for perf in summary)
-    total_current_value = sum(perf["current_value"] for perf in summary)
-    total_return = total_current_value - total_invested
-    total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
-    
-    return {
-        "individual_performance": summary,
-        "portfolio_summary": {
-            "total_invested": round(total_invested, 2),
-            "total_current_value": round(total_current_value, 2),
-            "total_return": round(total_return, 2),
-            "total_return_percentage": round(total_return_pct, 2),
-            "number_of_stocks": len(summary)
+    try:
+        symbols = get_current_holdings(db)
+        summary = []
+        
+        for symbol in symbols:
+            perf_data = get_user_performance_since_purchase(db, symbol)
+            if "error" not in perf_data:
+                summary.append({
+                    "symbol": symbol,
+                    "performance": perf_data
+                })
+        
+        if not summary:
+            return {"error": "No stocks currently held in portfolio"}
+        
+        # Fix: Access the performance data correctly
+        total_invested = sum(item["performance"]["cost_basis"] for item in summary)
+        total_current_value = sum(item["performance"]["current_value"] for item in summary)
+        total_return = total_current_value - total_invested
+        total_return_pct = (total_return / total_invested * 100) if total_invested > 0 else 0
+        
+        return {
+            "individual_performance": summary,
+            "portfolio_summary": {
+                "total_invested": round(total_invested, 2),
+                "total_current_value": round(total_current_value, 2),
+                "total_return": round(total_return, 2),
+                "total_return_percentage": round(total_return_pct, 2),
+                "number_of_stocks": len(summary)
+            }
         }
-    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating portfolio performance: {str(e)}")

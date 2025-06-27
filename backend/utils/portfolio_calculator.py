@@ -11,14 +11,14 @@ def calculate_portfolio_value(transactions, prices):
     cash = 0
 
     for t in transactions:
-        symbol = t.symbol.upper()
+        symbol = t.symbol.upper() if t.symbol else None
         qty = t.quantity
         price = t.price or 0
 
-        if t.type == "buy":
+        if t.type == "buy" and symbol:
             holdings[symbol] += qty
             cash -= qty * price
-        elif t.type == "sell":
+        elif t.type == "sell" and symbol:
             holdings[symbol] -= qty
             cash += qty * price
         elif t.type == "deposit":
