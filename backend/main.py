@@ -19,7 +19,10 @@ from backend.utils.historical_fetcher import (
     get_stock_historical_chart,
     get_portfolio_timeline_data,
     get_market_comparison_data,
-    get_risk_metrics
+    get_risk_metrics,
+    get_sector_analysis,
+    get_tax_reporting_data,
+    get_enhanced_dashboard_metrics
 )
 from backend.utils.data_import_export import (
     export_transactions_to_csv, 
@@ -438,20 +441,18 @@ def get_stock_chart(symbol: str, period: str = "1y"):
 def get_portfolio_timeline(db: Session = Depends(get_db)):
     """
     Get comprehensive portfolio timeline data with individual stock performance
+    Only includes stocks currently held in portfolio
     """
     try:
-        # Get all symbols from transactions
-        transactions = db.query(models.Transaction).all()
-        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
-        
-        if not symbols:
-            return {"error": "No stocks found in portfolio"}
-        
         # Get date range from transactions
+        transactions = db.query(models.Transaction).all()
+        if not transactions:
+            return {"error": "No transactions found"}
+        
         start_date = min(tx.date for tx in transactions)
         end_date = datetime.now().date()
         
-        data = get_portfolio_timeline_data(symbols, start_date, end_date)
+        data = get_portfolio_timeline_data(db, start_date, end_date)
         if "error" in data:
             raise HTTPException(status_code=404, detail=data["error"])
         return data
@@ -501,3 +502,55 @@ def get_first_purchase_dates(db: Session = Depends(get_db)):
         return first_purchases
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting first purchase dates: {str(e)}")
+
+# New Enhanced Analytics Endpoints
+@app.get("/analytics/sector-analysis")
+def get_sector_allocation(db: Session = Depends(get_db)):
+    """
+    Get sector allocation and diversification analysis for current holdings
+    """
+    try:
+        data = get_sector_analysis(db)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating sector analysis: {str(e)}")
+
+@app.get("/analytics/tax-report")
+def get_tax_report(db: Session = Depends(get_db), year: int = None):
+    """
+    Get capital gains/losses tax report for specified year
+    """
+    try:
+        data = get_tax_reporting_data(db, year)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating tax report: {str(e)}")
+
+@app.get("/analytics/dashboard-metrics")
+def get_dashboard_analytics(db: Session = Depends(get_db)):
+    """
+    Get enhanced dashboard metrics including portfolio health, top performers, concentration risk
+    """
+    try:
+        data = get_enhanced_dashboard_metrics(db)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating dashboard metrics: {str(e)}")
+
+@app.get("/portfolio/current-holdings")
+def get_current_portfolio_holdings(db: Session = Depends(get_db)):
+    """
+    Get list of stocks currently held in portfolio with quantities
+    """
+    try:
+        from backend.utils.portfolio_calculator import get_current_holdings_with_quantities
+        holdings = get_current_holdings_with_quantities(db)
+        return {"holdings": holdings}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting current holdings: {str(e)}")

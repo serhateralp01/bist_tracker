@@ -114,11 +114,19 @@ def get_stock_historical_chart(symbol: str, period: str = "1y") -> Dict[str, Any
     except Exception as e:
         return {"error": f"Error fetching chart data for {symbol}: {str(e)}"}
 
-def get_portfolio_timeline_data(symbols: List[str], start_date: date, end_date: date) -> Dict[str, Any]:
+def get_portfolio_timeline_data(db: Session, start_date: date, end_date: date) -> Dict[str, Any]:
     """
     Generates a timeline of portfolio value and individual stock performance
+    Only includes stocks currently held in portfolio
     """
     try:
+        from backend.utils.portfolio_calculator import get_current_holdings
+        
+        # Get only currently held stocks
+        symbols = get_current_holdings(db)
+        if not symbols:
+            return {"error": "No stocks currently held in portfolio"}
+        
         hist_data = get_historical_data(symbols, start_date, end_date)
         if hist_data.empty:
             return {"error": "No historical data available for timeline"}
@@ -231,14 +239,15 @@ def get_market_comparison_data(db: Session, symbol: str, period: str = "1y") -> 
 def get_risk_metrics(db: Session, period: str = "1y") -> Dict[str, Any]:
     """
     Calculate various risk metrics for portfolio stocks
+    Only includes stocks currently held in portfolio
     """
     try:
-        # Get symbols from database transactions
-        transactions = db.query(models.Transaction).all()
-        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
+        from backend.utils.portfolio_calculator import get_current_holdings
         
+        # Get only currently held stocks
+        symbols = get_current_holdings(db)
         if not symbols:
-            return {"error": "No stocks found in portfolio"}
+            return {"error": "No stocks currently held in portfolio"}
         
         # Get historical data
         end_date = datetime.now().date()
@@ -287,4 +296,289 @@ def get_risk_metrics(db: Session, period: str = "1y") -> Dict[str, Any]:
         }
         
     except Exception as e:
-        return {"error": f"Error calculating risk metrics: {str(e)}"} 
+        return {"error": f"Error calculating risk metrics: {str(e)}"}
+
+def get_sector_analysis(db: Session) -> Dict[str, Any]:
+    """
+    Get sector allocation and diversification analysis for current holdings
+    """
+    try:
+        from backend.utils.portfolio_calculator import get_current_holdings_with_quantities
+        from backend.utils.stock_fetcher import get_latest_price
+        
+        holdings = get_current_holdings_with_quantities(db)
+        if not holdings:
+            return {"error": "No stocks currently held in portfolio"}
+        
+        # Get stock info using yfinance for sector data
+        sector_data = {}
+        total_value = 0
+        
+        for symbol, quantity in holdings.items():
+            try:
+                formatted_symbol = f"{symbol}.IS" if not symbol.endswith('.IS') else symbol
+                ticker = yf.Ticker(formatted_symbol)
+                info = ticker.info
+                
+                current_price = get_latest_price(symbol) or 0
+                position_value = quantity * current_price
+                total_value += position_value
+                
+                # Get sector information
+                sector = info.get('sector', 'Unknown')
+                industry = info.get('industry', 'Unknown')
+                
+                if sector not in sector_data:
+                    sector_data[sector] = {
+                        'value': 0,
+                        'stocks': [],
+                        'industries': {}
+                    }
+                
+                sector_data[sector]['value'] += position_value
+                sector_data[sector]['stocks'].append({
+                    'symbol': symbol,
+                    'value': position_value,
+                    'percentage': 0  # Will calculate after
+                })
+                
+                if industry not in sector_data[sector]['industries']:
+                    sector_data[sector]['industries'][industry] = 0
+                sector_data[sector]['industries'][industry] += position_value
+                
+            except Exception as e:
+                print(f"Error getting sector data for {symbol}: {e}")
+                continue
+        
+        # Calculate percentages
+        for sector in sector_data:
+            sector_data[sector]['percentage'] = round((sector_data[sector]['value'] / total_value) * 100, 2) if total_value > 0 else 0
+            for stock in sector_data[sector]['stocks']:
+                stock['percentage'] = round((stock['value'] / total_value) * 100, 2) if total_value > 0 else 0
+        
+        # Diversification score (0-100, higher is more diversified)
+        num_sectors = len(sector_data)
+        if num_sectors <= 1:
+            diversification_score = 0
+        elif num_sectors <= 3:
+            diversification_score = 40
+        elif num_sectors <= 5:
+            diversification_score = 70
+        else:
+            diversification_score = 90
+        
+        return {
+            'sector_allocation': sector_data,
+            'total_portfolio_value': round(total_value, 2),
+            'diversification_score': diversification_score,
+            'num_sectors': num_sectors,
+            'num_stocks': len(holdings)
+        }
+        
+    except Exception as e:
+        return {"error": f"Error calculating sector analysis: {str(e)}"}
+
+def get_tax_reporting_data(db: Session, year: int = None) -> Dict[str, Any]:
+    """
+    Calculate capital gains/losses for tax reporting purposes
+    """
+    try:
+        from datetime import datetime
+        
+        if year is None:
+            year = datetime.now().year
+        
+        # Get all sell transactions for the specified year
+        sell_transactions = db.query(models.Transaction).filter(
+            models.Transaction.type == 'sell',
+            models.Transaction.date >= datetime(year, 1, 1).date(),
+            models.Transaction.date <= datetime(year, 12, 31).date()
+        ).order_by(models.Transaction.date).all()
+        
+        if not sell_transactions:
+            return {"error": f"No sell transactions found for year {year}"}
+        
+        tax_data = {
+            'year': year,
+            'transactions': [],
+            'summary': {
+                'total_proceeds': 0,
+                'total_cost_basis': 0,
+                'total_capital_gains': 0,
+                'short_term_gains': 0,
+                'long_term_gains': 0
+            }
+        }
+        
+        for sell_tx in sell_transactions:
+            # Get buy transactions for the same symbol before the sell date
+            buy_transactions = db.query(models.Transaction).filter(
+                models.Transaction.type == 'buy',
+                models.Transaction.symbol == sell_tx.symbol,
+                models.Transaction.date <= sell_tx.date
+            ).order_by(models.Transaction.date).all()
+            
+            if not buy_transactions:
+                continue
+            
+            # Calculate cost basis using FIFO method
+            remaining_quantity = sell_tx.quantity
+            total_cost_basis = 0
+            
+            for buy_tx in buy_transactions:
+                if remaining_quantity <= 0:
+                    break
+                
+                quantity_to_use = min(remaining_quantity, buy_tx.quantity)
+                cost_basis = quantity_to_use * buy_tx.price
+                total_cost_basis += cost_basis
+                remaining_quantity -= quantity_to_use
+            
+            proceeds = sell_tx.quantity * sell_tx.price
+            capital_gain = proceeds - total_cost_basis
+            
+            # Determine if short-term or long-term (assuming 1 year threshold)
+            days_held = (sell_tx.date - buy_transactions[0].date).days
+            is_long_term = days_held >= 365
+            
+            transaction_data = {
+                'sell_date': sell_tx.date.strftime('%Y-%m-%d'),
+                'symbol': sell_tx.symbol,
+                'quantity': sell_tx.quantity,
+                'sell_price': sell_tx.price,
+                'proceeds': round(proceeds, 2),
+                'cost_basis': round(total_cost_basis, 2),
+                'capital_gain': round(capital_gain, 2),
+                'days_held': days_held,
+                'is_long_term': is_long_term
+            }
+            
+            tax_data['transactions'].append(transaction_data)
+            tax_data['summary']['total_proceeds'] += proceeds
+            tax_data['summary']['total_cost_basis'] += total_cost_basis
+            tax_data['summary']['total_capital_gains'] += capital_gain
+            
+            if is_long_term:
+                tax_data['summary']['long_term_gains'] += capital_gain
+            else:
+                tax_data['summary']['short_term_gains'] += capital_gain
+        
+        # Round summary values
+        for key in tax_data['summary']:
+            if isinstance(tax_data['summary'][key], float):
+                tax_data['summary'][key] = round(tax_data['summary'][key], 2)
+        
+        return tax_data
+        
+    except Exception as e:
+        return {"error": f"Error calculating tax data: {str(e)}"}
+
+def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
+    """
+    Get comprehensive dashboard metrics for better portfolio insights
+    """
+    try:
+        from backend.utils.portfolio_calculator import get_current_holdings_with_quantities
+        from backend.utils.stock_fetcher import get_latest_price
+        
+        holdings = get_current_holdings_with_quantities(db)
+        if not holdings:
+            return {"error": "No stocks currently held in portfolio"}
+        
+        # Get recent performance data (30 days)
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=30)
+        
+        symbols = list(holdings.keys())
+        hist_data = get_historical_data(symbols, start_date, end_date)
+        
+        dashboard_metrics = {
+            'portfolio_health': {},
+            'top_performers': [],
+            'worst_performers': [],
+            'concentration_risk': {},
+            'momentum_indicators': {},
+            'volatility_analysis': {}
+        }
+        
+        total_portfolio_value = 0
+        stock_performances = []
+        
+        # Calculate individual stock metrics
+        for symbol, quantity in holdings.items():
+            current_price = get_latest_price(symbol) or 0
+            position_value = quantity * current_price
+            total_portfolio_value += position_value
+            
+            symbol_col = f"{symbol}.IS"
+            if symbol_col in hist_data.columns:
+                symbol_data = hist_data[symbol_col].dropna()
+                if len(symbol_data) >= 2:
+                    # 30-day performance
+                    start_price = symbol_data.iloc[0]
+                    end_price = symbol_data.iloc[-1]
+                    performance_30d = ((end_price - start_price) / start_price) * 100
+                    
+                    # Volatility (30-day)
+                    returns = symbol_data.pct_change().dropna()
+                    volatility = returns.std() * np.sqrt(252) * 100  # Annualized
+                    
+                    stock_performances.append({
+                        'symbol': symbol,
+                        'position_value': position_value,
+                        'performance_30d': round(performance_30d, 2),
+                        'volatility': round(volatility, 2),
+                        'current_price': current_price
+                    })
+        
+        # Sort by performance
+        stock_performances.sort(key=lambda x: x['performance_30d'], reverse=True)
+        
+        # Top and worst performers
+        dashboard_metrics['top_performers'] = stock_performances[:3]
+        dashboard_metrics['worst_performers'] = stock_performances[-3:]
+        
+        # Concentration risk
+        if total_portfolio_value > 0:
+            concentration_data = []
+            for stock in stock_performances:
+                weight = (stock['position_value'] / total_portfolio_value) * 100
+                concentration_data.append({
+                    'symbol': stock['symbol'],
+                    'weight': round(weight, 2)
+                })
+            
+            # Check if portfolio is over-concentrated
+            max_weight = max(concentration_data, key=lambda x: x['weight'])['weight'] if concentration_data else 0
+            is_concentrated = max_weight > 25  # More than 25% in single stock
+            
+            dashboard_metrics['concentration_risk'] = {
+                'is_concentrated': is_concentrated,
+                'max_position_weight': round(max_weight, 2),
+                'positions': concentration_data
+            }
+        
+        # Portfolio health score (0-100)
+        health_score = 100
+        if dashboard_metrics['concentration_risk'].get('is_concentrated'):
+            health_score -= 20
+        
+        num_stocks = len(holdings)
+        if num_stocks < 5:
+            health_score -= 15  # Diversification penalty
+        
+        avg_volatility = np.mean([stock['volatility'] for stock in stock_performances]) if stock_performances else 0
+        if avg_volatility > 30:
+            health_score -= 15  # High volatility penalty
+        
+        dashboard_metrics['portfolio_health'] = {
+            'score': max(0, health_score),
+            'num_holdings': num_stocks,
+            'avg_volatility': round(avg_volatility, 2),
+            'total_value': round(total_portfolio_value, 2)
+        }
+        
+        return dashboard_metrics
+        
+    except Exception as e:
+        return {"error": f"Error calculating dashboard metrics: {str(e)}"} 
