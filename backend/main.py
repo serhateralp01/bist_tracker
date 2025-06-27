@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, File, UploadFile
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from backend import models, schemas, crud
 from backend.database import SessionLocal, engine
@@ -13,8 +14,23 @@ from datetime import datetime, timedelta, date
 from backend.schemas import Transaction
 from backend.utils.stock_fetcher import get_latest_price, get_bist100_data
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_historical_eur_try_rate
-from backend.utils.historical_fetcher import get_historical_data
+from backend.utils.historical_fetcher import (
+    get_historical_data, 
+    get_stock_historical_chart,
+    get_portfolio_timeline_data,
+    get_market_comparison_data,
+    get_correlation_analysis,
+    get_risk_metrics
+)
+from backend.utils.data_import_export import (
+    export_transactions_to_csv, 
+    export_transactions_to_excel,
+    import_transactions_from_csv,
+    import_transactions_from_excel,
+    create_sample_csv_template
+)
 import pandas as pd
+import io
 
 
 app = FastAPI()
@@ -322,3 +338,189 @@ def add_event(payload: schemas.EventPayload, db: Session = Depends(get_db)):
     
     # This should not be reached if parser is correct
     raise HTTPException(status_code=500, detail="Unhandled event type.")
+
+# Data Export Endpoints
+@app.get("/export/csv")
+def export_csv(db: Session = Depends(get_db)):
+    """
+    Export all transactions to CSV format
+    """
+    try:
+        csv_content = export_transactions_to_csv(db)
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=transactions.csv"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@app.get("/export/excel")
+def export_excel(db: Session = Depends(get_db)):
+    """
+    Export all transactions to Excel format with multiple sheets
+    """
+    try:
+        excel_content = export_transactions_to_excel(db)
+        return Response(
+            content=excel_content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=transactions.xlsx"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+@app.get("/export/csv-template")
+def get_csv_template():
+    """
+    Get a sample CSV template for import
+    """
+    try:
+        template_content = create_sample_csv_template()
+        return Response(
+            content=template_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=import_template.csv"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Template generation failed: {str(e)}")
+
+# Data Import Endpoints
+@app.post("/import/csv")
+async def import_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Import transactions from CSV file
+    """
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="File must be a CSV file")
+    
+    try:
+        content = await file.read()
+        csv_content = content.decode('utf-8')
+        result = import_transactions_from_csv(db, csv_content)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+@app.post("/import/excel")
+async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """
+    Import transactions from Excel file
+    """
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(status_code=400, detail="File must be an Excel file (.xlsx or .xls)")
+    
+    try:
+        content = await file.read()
+        result = import_transactions_from_excel(db, content)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
+
+# Historical Data Analysis Endpoints
+@app.get("/stocks/{symbol}/chart")
+def get_stock_chart(symbol: str, period: str = "1y"):
+    """
+    Get detailed historical chart data for a single stock with technical indicators
+    
+    Parameters:
+    - symbol: Stock symbol (e.g., 'SISE')
+    - period: Time period ('1mo', '3mo', '6mo', '1y', '2y', '5y', 'max')
+    """
+    try:
+        data = get_stock_historical_chart(symbol, period)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching chart data: {str(e)}")
+
+@app.get("/analytics/portfolio-timeline")
+def get_portfolio_timeline(db: Session = Depends(get_db)):
+    """
+    Get comprehensive portfolio timeline data with individual stock performance
+    """
+    try:
+        # Get all symbols from transactions
+        transactions = db.query(models.Transaction).all()
+        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
+        
+        if not symbols:
+            return {"error": "No stocks found in portfolio"}
+        
+        # Get date range from transactions
+        start_date = min(tx.date for tx in transactions)
+        end_date = datetime.now().date()
+        
+        data = get_portfolio_timeline_data(symbols, start_date, end_date)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating timeline: {str(e)}")
+
+@app.get("/analytics/market-comparison/{symbol}")
+def get_market_comparison(symbol: str, period: str = "1y", comparison_symbols: str = None):
+    """
+    Compare a stock's performance against market indices and other stocks
+    
+    Parameters:
+    - symbol: Primary stock symbol
+    - period: Time period for comparison
+    - comparison_symbols: Comma-separated list of symbols to compare against
+    """
+    try:
+        comp_symbols = None
+        if comparison_symbols:
+            comp_symbols = [s.strip().upper() for s in comparison_symbols.split(',')]
+        
+        data = get_market_comparison_data(symbol, comp_symbols, period)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating comparison: {str(e)}")
+
+@app.get("/analytics/correlation")
+def get_portfolio_correlation(db: Session = Depends(get_db), period: str = "1y"):
+    """
+    Calculate correlation matrix between stocks in portfolio
+    """
+    try:
+        # Get all symbols from transactions
+        transactions = db.query(models.Transaction).all()
+        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
+        
+        if len(symbols) < 2:
+            return {"error": "Need at least 2 stocks for correlation analysis"}
+        
+        data = get_correlation_analysis(symbols, period)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating correlations: {str(e)}")
+
+@app.get("/analytics/risk-metrics")
+def get_portfolio_risk_metrics(db: Session = Depends(get_db), period: str = "1y"):
+    """
+    Calculate various risk metrics for portfolio stocks
+    """
+    try:
+        # Get all symbols from transactions
+        transactions = db.query(models.Transaction).all()
+        symbols = list(set(tx.symbol for tx in transactions if tx.symbol))
+        
+        if not symbols:
+            return {"error": "No stocks found in portfolio"}
+        
+        data = get_risk_metrics(symbols, period)
+        if "error" in data:
+            raise HTTPException(status_code=404, detail=data["error"])
+        return data
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error calculating risk metrics: {str(e)}")
