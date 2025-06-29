@@ -1,301 +1,477 @@
-# BIST Stock Portfolio Tracker
+# 📈 BIST Stock Portfolio Tracker
 
-A modern, full-stack application for tracking and analyzing your stock portfolio on Borsa Istanbul (BIST). Built with FastAPI backend and React frontend, featuring real-time data, transaction management, and portfolio analytics.
+A modern, full-stack application for tracking and analyzing your stock portfolio on Borsa Istanbul (BIST). Built with FastAPI backend and React frontend, featuring real-time data, advanced analytics, and intuitive portfolio management.
 
-## ✨ Features
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Python](https://img.shields.io/badge/python-3.8%2B-blue.svg)
+![React](https://img.shields.io/badge/react-19.1.0-blue.svg)
+![FastAPI](https://img.shields.io/badge/fastapi-latest-green.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+## ✨ Key Features
+
+### 💼 Portfolio Management
 - **Transaction Management**: Log buys, sells, dividends, and capital increases
-- **SMS Message Parsing**: Automatically parse broker SMS notifications
-- **Real-Time Portfolio Valuation**: Live stock prices from Yahoo Finance
-- **Portfolio Analytics**: Daily performance charts and profit/loss analysis
-- **Responsive Design**: Works on desktop and mobile devices
-- **Local Data Storage**: Secure SQLite database
+- **Real-Time Valuation**: Live stock prices from Yahoo Finance API
+- **Multi-Currency Support**: TRY and USD tracking with real-time exchange rates
+- **Performance Analytics**: 30-day gain/loss tracking in Turkish Lira
+- **Risk Metrics**: Portfolio volatility and risk assessment
+
+### 📱 Smart Message Parsing
+- **SMS Integration**: Automatically parse broker SMS notifications (Garanti BBVA, İş Bankası, Yapı Kredi)
+- **Bank Message Support**: Parse investment account statements
+- **Auto-Detection**: Intelligent parsing of transaction details from messages
+
+### 📊 Advanced Analytics
+- **Dashboard Overview**: Portfolio summary with key metrics
+- **Historical Performance**: Interactive charts with multiple time periods
+- **Cash Flow Analysis**: Track money in/out of your portfolio
+- **Sector Analysis**: Portfolio diversification insights
+- **Profit/Loss Tracking**: Detailed P&L analysis per stock
+
+### 🎨 Modern UI/UX
+- **Responsive Design**: Works seamlessly on desktop and mobile
+- **Dark/Light Theme Support**: Tailwind CSS with modern design
+- **Interactive Charts**: Recharts-powered data visualizations
+- **Loading States**: Smooth animations and progress indicators
+- **Enhanced Tooltips**: Detailed information on hover
+
+### 🔧 Technical Features
+- **Local Database**: Secure SQLite storage
+- **Data Import/Export**: JSON-based portfolio backup/restore
+- **Background Tasks**: Automated data fetching and updates
+- **API Documentation**: Interactive Swagger/OpenAPI docs
+- **Type Safety**: Full TypeScript implementation
 
 ## 🛠️ Tech Stack
 
-**Backend:**
-- Python 3.8+
-- FastAPI
-- SQLAlchemy
-- yfinance for stock data
-- SQLite database
+### Backend
+- **Python 3.8+** with FastAPI
+- **SQLAlchemy** for ORM
+- **SQLite** database
+- **yfinance** for real-time stock data
+- **APScheduler** for background tasks
+- **Pydantic** for data validation
 
-**Frontend:**
-- React 18
-- TypeScript
-- Tailwind CSS
-- Recharts for data visualization
-- Axios for API calls
-
-## 📋 Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-- **Python 3.8 or higher** - [Download Python](https://www.python.org/downloads/)
-- **Node.js 16 or higher** - [Download Node.js](https://nodejs.org/)
-- **Git** - [Download Git](https://git-scm.com/)
-
-### Verify Installation
-
-```bash
-python --version    # Should be 3.8+
-node --version      # Should be 16+
-npm --version       # Should be 8+
-```
+### Frontend
+- **React 19** with TypeScript
+- **Tailwind CSS** for styling
+- **React Router** for navigation
+- **Recharts** for data visualization
+- **Axios** for API communication
+- **Heroicons** for UI icons
 
 ## 🚀 Quick Start
 
-### 1. Clone the Repository
+### Prerequisites
 
+Ensure you have the following installed:
+- **Python 3.8+** - [Download](https://www.python.org/downloads/)
+- **Node.js 16+** - [Download](https://nodejs.org/)
+- **Git** - [Download](https://git-scm.com/)
+
+### One-Click Setup
+
+For macOS/Linux users:
 ```bash
-git clone <repository-url>
-cd hisse_takip
+git clone https://github.com/serhateralp01/bist_tracker.git
+cd hisse-takip
+chmod +x setup.sh
+./setup.sh
 ```
 
-### 2. Backend Setup
+For Windows users:
+```cmd
+git clone https://github.com/serhateralp01/bist_tracker.git
+cd hisse-takip
+setup.bat
+```
 
+### Manual Setup
+
+#### 1. Clone Repository
 ```bash
-# Create virtual environment
+git clone https://github.com/serhateralp01/bist_tracker.git
+cd hisse-takip
+```
+
+#### 2. Backend Setup
+```bash
+# Create and activate virtual environment
 python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Activate virtual environment
-# On macOS/Linux:
-source venv/bin/activate
-# On Windows:
-# venv\Scripts\activate
-
-# Install Python dependencies
-pip install -r backend/requirements.txt
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### 3. Frontend Setup
-
+#### 3. Frontend Setup
 ```bash
-# Navigate to frontend directory
 cd frontend
-
-# Install Node.js dependencies
 npm install
-
-# Return to project root
 cd ..
 ```
 
-### 4. Run the Application
+### Running the Application
 
-**Terminal 1 - Backend:**
+#### Option 1: Use Start Script (Recommended)
 ```bash
-# Make sure you're in the project root and virtual environment is activated
-source venv/bin/activate  # Skip if already activated
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+# macOS/Linux
+./start.sh
+
+# Windows
+start.bat
 ```
 
-**Terminal 2 - Frontend:**
+#### Option 2: Manual Start
 ```bash
-cd frontend
-npm start
+# Terminal 1 - Backend
+python run_backend.py
+
+# Terminal 2 - Frontend
+cd frontend && npm start
 ```
 
-### 5. Access the Application
-
+### Access Points
 - **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
+- **Backend API**: http://127.0.0.1:8000
+- **API Documentation**: http://127.0.0.1:8000/docs
 
-## 📁 Project Structure
+## 📁 Project Architecture
 
 ```
 hisse_takip/
-├── backend/                    # FastAPI backend
-│   ├── main.py                # FastAPI application entry point
-│   ├── models.py              # SQLAlchemy database models
-│   ├── schemas.py             # Pydantic data schemas
-│   ├── crud.py                # Database CRUD operations
-│   ├── database.py            # Database configuration
-│   ├── scheduler.py           # Background tasks
-│   ├── requirements.txt       # Python dependencies
-│   └── utils/                 # Utility modules
-│       ├── stock_fetcher.py   # Real-time stock price fetching
-│       ├── message_parser.py  # SMS message parsing
+├── 🔧 Backend (FastAPI)
+│   ├── main.py              # Application entry point
+│   ├── models.py            # Database models
+│   ├── schemas.py           # Pydantic schemas
+│   ├── crud.py              # Database operations
+│   ├── database.py          # DB configuration
+│   ├── scheduler.py         # Background tasks
+│   └── utils/               # Utility modules
+│       ├── stock_fetcher.py         # Real-time prices
+│       ├── historical_fetcher.py    # Historical data & analytics
+│       ├── message_parser.py        # SMS parsing
 │       ├── portfolio_calculator.py  # Portfolio calculations
-│       ├── currency_fetcher.py      # Currency exchange rates
-│       ├── historical_fetcher.py    # Historical data
-│       └── event_parser.py          # Corporate events parsing
-├── frontend/                   # React frontend
+│       ├── currency_fetcher.py      # Exchange rates
+│       ├── event_parser.py          # Corporate events
+│       └── data_import_export.py    # Backup/restore
+├── 🎨 Frontend (React)
 │   ├── src/
-│   │   ├── components/        # Reusable React components
-│   │   │   ├── BistStatus.tsx
-│   │   │   ├── InputTransaction.tsx
-│   │   │   ├── Navigation.tsx
-│   │   │   ├── PortfolioChart.tsx
-│   │   │   └── StatCard.tsx
-│   │   ├── pages/            # Application pages
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── MessageParse.tsx
-│   │   │   └── Transactions.tsx
-│   │   ├── services/         # API service layer
-│   │   │   └── api.ts
-│   │   └── App.tsx           # Main application component
-│   ├── public/               # Static assets
-│   ├── package.json          # Node.js dependencies
-│   └── tailwind.config.js    # Tailwind CSS configuration
-├── venv/                     # Python virtual environment
-├── bist.db                   # SQLite database (created automatically)
-├── requirements.txt          # Root requirements file
-└── README.md
+│   │   ├── components/              # Reusable components
+│   │   │   ├── BistStatus.tsx       # Market status
+│   │   │   ├── InputTransaction.tsx # Transaction form
+│   │   │   ├── LoadingSpinner.tsx   # Loading animations
+│   │   │   ├── Navigation.tsx       # App navigation
+│   │   │   ├── PortfolioChart.tsx   # Chart component
+│   │   │   ├── StatCard.tsx         # Metric cards
+│   │   │   ├── EnhancedTooltip.tsx  # Custom tooltips
+│   │   │   └── ImportExport.tsx     # Data management
+│   │   ├── pages/                   # Application pages
+│   │   │   ├── Dashboard.tsx        # Main dashboard
+│   │   │   ├── Analytics.tsx        # Advanced analytics
+│   │   │   ├── Transactions.tsx     # Transaction management
+│   │   │   ├── CashFlow.tsx         # Cash flow analysis
+│   │   │   └── MessageParse.tsx     # SMS parsing
+│   │   ├── services/
+│   │   │   └── api.ts               # API client
+│   │   └── App.tsx                  # Main component
+├── 📊 Database
+│   └── bist.db                      # SQLite database
+├── 🔧 Configuration
+│   ├── requirements.txt             # Python dependencies
+│   ├── run_backend.py              # Backend runner
+│   ├── start.sh / start.bat        # Launch scripts
+│   └── setup.sh / setup.bat        # Setup scripts
+└── 📚 Documentation
+    ├── README.md                    # This file
+    └── SETUP.md                     # Detailed setup guide
 ```
 
-## 🔧 Configuration
+## 📖 Feature Documentation
 
-### Environment Variables (Optional)
+### 🎯 Dashboard
+- **Portfolio Summary**: Total value, daily change, 30-day performance
+- **Stock Holdings**: Individual stock performance with real-time prices
+- **Risk Metrics**: Portfolio volatility and risk assessment
+- **Interactive Charts**: Historical performance visualization
 
-Create a `.env` file in the project root for custom configuration:
+### 📈 Analytics Page
+- **Performance Charts**: Multiple timeframe analysis (1D, 1W, 1M, 3M, 6M, 1Y)
+- **Sector Distribution**: Portfolio allocation by sector
+- **Top Performers**: Best and worst performing stocks
+- **Historical Trends**: Long-term performance analysis
 
-```env
-# Database
-DATABASE_URL=sqlite:///./bist.db
+### 💰 Cash Flow Analysis
+- **Money Flow Tracking**: Deposits and withdrawals
+- **Investment Timeline**: Transaction history visualization
+- **Return Calculations**: Investment performance metrics
 
-# API Settings
-API_HOST=0.0.0.0
-API_PORT=8000
+### 📱 Message Parsing
+- **Supported Banks**: Garanti BBVA, İş Bankası, Yapı Kredi
+- **Auto-Detection**: Automatic transaction type recognition
+- **Smart Parsing**: Extract symbols, quantities, prices, and dates
+- **Manual Review**: Confirm before adding to portfolio
 
-# Frontend URL (for CORS)
-FRONTEND_URL=http://localhost:3000
+### 💾 Data Management
+- **Export Portfolio**: JSON backup of all data
+- **Import Data**: Restore from backup files
+- **Transaction History**: Complete audit trail
+- **Data Validation**: Ensure data integrity
+
+## 🔌 API Reference
+
+### Authentication
+Currently using simple CORS setup. Future versions will include proper authentication.
+
+### Core Endpoints
+
+#### Transactions
+```http
+GET    /transactions              # List all transactions
+POST   /transactions              # Create transaction
+PUT    /transactions/{id}         # Update transaction
+DELETE /transactions/{id}         # Delete transaction
 ```
 
-## 📖 API Endpoints
-
-### Transactions
-- `GET /transactions` - Get all transactions
-- `POST /transactions` - Create new transaction
-- `PUT /transactions/{id}` - Update transaction
-- `DELETE /transactions/{id}` - Delete transaction
-
-### Portfolio
-- `GET /portfolio/daily_value` - Get daily portfolio values
-- `GET /portfolio/profit_loss` - Get profit/loss analysis
-
-### Message Parsing
-- `POST /parse-message` - Parse broker SMS messages
-
-### Health Check
-- `GET /` - API health check
-
-## 🎯 Usage Examples
-
-### Adding a Transaction
-
-1. Go to **Transactions** page
-2. Click **"Add Transaction"**
-3. Fill in the details:
-   - Type: Buy/Sell/Dividend/Capital Increase
-   - Symbol: Stock symbol (e.g., SISE, THYAO)
-   - Quantity: Number of shares
-   - Price: Price per share
-   - Date: Transaction date
-
-### Parsing SMS Messages
-
-1. Go to **Message Parse** page
-2. Paste your broker SMS message
-3. Click **"Parse Message"**
-4. Review and confirm the parsed transaction
-
-### Viewing Portfolio Analytics
-
-1. Go to **Dashboard** page
-2. View your portfolio summary cards
-3. Analyze performance with interactive charts
-4. Check profit/loss for individual stocks
-
-## 🛠️ Development
-
-### Backend Development
-
-```bash
-# Install development dependencies
-pip install -r backend/requirements.txt
-
-# Run with auto-reload
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-# Run tests (if available)
-pytest backend/tests/
+#### Portfolio
+```http
+GET    /portfolio/summary         # Portfolio overview
+GET    /portfolio/daily_value     # Daily values
+GET    /portfolio/profit_loss     # P&L analysis
+GET    /portfolio/holdings        # Current holdings
 ```
 
-### Frontend Development
-
-```bash
-cd frontend
-
-# Start development server
-npm start
-
-# Build for production
-npm run build
-
-# Run tests
-npm test
+#### Market Data
+```http
+GET    /market/prices            # Current stock prices
+GET    /market/status            # Market status
+GET    /market/historical        # Historical data
 ```
+
+#### Utilities
+```http
+POST   /parse-message            # Parse SMS messages
+GET    /health                   # Health check
+POST   /export                   # Export data
+POST   /import                   # Import data
+```
+
+## 🎮 Usage Guide
+
+### Adding Transactions
+
+1. **Manual Entry**:
+   - Navigate to **Transactions** page
+   - Click **"Add Transaction"**
+   - Fill in details (type, symbol, quantity, price, date)
+   - Click **"Save"**
+
+2. **SMS Parsing**:
+   - Go to **Message Parse** page
+   - Paste broker SMS
+   - Review parsed details
+   - Confirm to add
+
+### Viewing Analytics
+
+1. **Dashboard Overview**:
+   - Quick portfolio summary
+   - Recent performance
+   - Key metrics at a glance
+
+2. **Detailed Analytics**:
+   - Navigate to **Analytics** page
+   - Select time period
+   - Explore charts and metrics
+   - Analyze performance trends
+
+### Data Management
+
+1. **Export Data**:
+   - Use **Import/Export** component
+   - Download JSON backup
+   - Store safely
+
+2. **Import Data**:
+   - Select backup file
+   - Review data
+   - Confirm import
 
 ## 🐛 Troubleshooting
 
 ### Common Issues
 
-**1. ModuleNotFoundError: No module named 'backend'**
-- Make sure you're running uvicorn from the project root directory
-- Ensure virtual environment is activated
+#### Backend Won't Start
+```bash
+# Solution 1: Check Python path
+python --version  # Should be 3.8+
+which python
 
-**2. Cannot connect to backend from frontend**
-- Check if backend is running on http://localhost:8000
-- Verify CORS settings in backend/main.py
+# Solution 2: Recreate virtual environment
+rm -rf venv
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
-**3. Stock data not loading**
+# Solution 3: Use run_backend.py
+python run_backend.py
+```
+
+#### Frontend Issues
+```bash
+# Clear cache and reinstall
+rm -rf node_modules package-lock.json
+npm install
+
+# Check Node version
+node --version  # Should be 16+
+```
+
+#### Database Problems
+```bash
+# Reset database
+rm bist.db
+# Restart application - database will be recreated
+```
+
+#### Stock Data Not Loading
 - Check internet connection
-- Some stocks might not be available on Yahoo Finance
-- Try with different stock symbols (e.g., SISE.IS, THYAO.IS)
-
-**4. Database errors**
-- Delete `bist.db` file and restart the application
-- Check file permissions
-
-**5. npm install fails**
-- Try deleting `node_modules` and `package-lock.json`, then run `npm install` again
-- Update Node.js to the latest LTS version
+- Verify stock symbols (use BIST format: SISE, THYAO, etc.)
+- Some stocks may not be available on Yahoo Finance
 
 ### Getting Help
 
-1. Check the [API documentation](http://localhost:8000/docs) when backend is running
-2. Look at browser console for frontend errors
-3. Check terminal outputs for backend errors
+1. **Check Logs**: Look at terminal output for error messages
+2. **API Docs**: Visit http://127.0.0.1:8000/docs when backend is running
+3. **Browser Console**: Check for frontend errors
+4. **GitHub Issues**: Report bugs or request features
 
-## 🔄 Database Schema
+## 🚧 Development
 
-### Transactions Table
+### Setting Up Development Environment
+
+```bash
+# Install development dependencies
+pip install -r requirements.txt
+
+# Frontend development server
+cd frontend
+npm start
+
+# Backend with auto-reload
+python run_backend.py
+```
+
+### Code Structure Guidelines
+
+- **Backend**: Follow FastAPI best practices
+- **Frontend**: Use TypeScript for type safety
+- **Styling**: Tailwind CSS with component-based approach
+- **State Management**: React hooks and context
+- **API Calls**: Centralized in `services/api.ts`
+
+### Testing
+
+```bash
+# Frontend tests
+cd frontend
+npm test
+
+# Backend tests (when available)
+pytest backend/tests/
+```
+
+## 📊 Database Schema
+
+### Core Tables
+
+**Transactions**
 ```sql
 CREATE TABLE transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    type VARCHAR(20) NOT NULL,  -- 'buy', 'sell', 'dividend', 'capital_increase', 'deposit'
-    symbol VARCHAR(10),         -- Stock symbol (nullable for deposits)
-    quantity FLOAT,             -- Number of shares
-    price FLOAT,               -- Price per share
-    date DATE NOT NULL,        -- Transaction date
-    note TEXT                  -- Additional notes
+    type VARCHAR(20) NOT NULL,        -- 'buy', 'sell', 'dividend', 'capital_increase', 'deposit'
+    symbol VARCHAR(10),               -- Stock symbol (nullable for deposits)
+    quantity FLOAT,                   -- Number of shares
+    price FLOAT,                     -- Price per share
+    date DATE NOT NULL,              -- Transaction date
+    note TEXT,                       -- Additional notes
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
+**Daily Values** (Auto-generated)
+```sql
+CREATE TABLE daily_values (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date DATE NOT NULL,
+    total_value_try FLOAT,
+    total_value_usd FLOAT,
+    daily_change_try FLOAT,
+    daily_change_percent FLOAT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## 🔄 Version History
+
+### v1.0.0 (Current)
+- ✅ Complete portfolio tracking system
+- ✅ Advanced analytics dashboard
+- ✅ SMS message parsing for major banks
+- ✅ Real-time stock price integration
+- ✅ Modern React UI with TypeScript
+- ✅ Data import/export functionality
+- ✅ Responsive design
+- ✅ 30-day TRY gain/loss tracking
+- ✅ Enhanced loading states and animations
+
+### Upcoming Features
+- 🔄 User authentication system
+- 🔄 Multi-user support
+- 🔄 Email notifications
+- 🔄 Mobile app (React Native)
+- 🔄 Advanced reporting
+- 🔄 API rate limiting
+
 ## 📄 License
 
-This project is open source. Feel free to use, modify, and distribute as needed.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+We welcome contributions! Here's how you can help:
 
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/AmazingFeature`)
+3. **Commit** your changes (`git commit -m 'Add some AmazingFeature'`)
+4. **Push** to the branch (`git push origin feature/AmazingFeature`)
+5. **Open** a Pull Request
+
+### Development Guidelines
+- Follow existing code style
+- Add tests for new features
+- Update documentation
+- Test thoroughly before submitting
+
+## 🙏 Acknowledgments
+
+- **Yahoo Finance** for providing stock data
+- **FastAPI** community for excellent documentation
+- **React** team for the amazing framework
+- **Tailwind CSS** for beautiful styling utilities
+- **BIST** investors community for feedback and suggestions
+
+## 📞 Support
+
+- **Documentation**: Check this README and `/docs` endpoint
+- **Issues**: [GitHub Issues](https://github.com/serhateralp01/bist_tracker/issues)
 ---
 
-Built with ❤️ for BIST investors 
+<div align="center">
+
+*Making portfolio tracking simple, powerful, and accessible to everyone*
+
+[⭐ Star this project](https://github.com/serhateralp01/bist_tracker) | [🐛 Report Bug](https://github.com/serhateralp01/bist_tracker/issues) | [💡 Request Feature](https://github.com/serhateralp01/bist_tracker/issues)
+
+</div> 
