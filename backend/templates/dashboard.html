@@ -57,20 +57,21 @@
     <!-- Chart Placeholder -->
     <div class="bg-white rounded-lg shadow p-6">
         <h3 class="text-xl font-bold mb-4">Allocation</h3>
-        <canvas id="allocationChart"></canvas>
+        <div class="relative w-full" style="height: 300px;">
+            <canvas id="allocationChart"></canvas>
+        </div>
     </div>
 </div>
 
 <div class="bg-white rounded-lg shadow p-6 mt-6">
     <h3 class="text-xl font-bold mb-4">Portfolio History (1Y)</h3>
-    <div class="relative h-96 w-full">
+    <div class="relative w-full" style="height: 400px;">
         <canvas id="historyChart"></canvas>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // Simple Allocation Chart
     const ctxAllocation = document.getElementById('allocationChart').getContext('2d');
