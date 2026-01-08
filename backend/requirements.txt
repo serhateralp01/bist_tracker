@@ -1,5 +1,4 @@
-fastapi
-uvicorn[standard]
+flask
 sqlalchemy
 yfinance
 requests
@@ -9,3 +8,5 @@ python-decouple
 curl_cffi
 psycopg2-binary
 tefas-crawler
+pytest
+pydantic
