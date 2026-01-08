@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1>Analysis & Forecast</h1>
+        <p class="lead">Time series analysis and forecasting for your portfolio stocks.</p>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Select Stock</div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('analysis.forecast') }}">
+                    <div class="mb-3">
+                        <label for="symbol" class="form-label">Portfolio Holding</label>
+                        <select class="form-select" name="symbol" required>
+                            <option value="" selected disabled>Choose...</option>
+                            {% for symbol in holdings %}
+                                <option value="{{ symbol }}" {% if symbol == selected_symbol %}selected{% endif %}>{{ symbol }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Generate Forecast</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header">Methodology</div>
+            <div class="card-body">
+                <small class="text-muted">
+                    Forecasts are generated using Holt-Winters Exponential Smoothing on the last 2 years of daily closing price data.
+                    <br><br>
+                    <strong>Disclaimer:</strong> This is for educational purposes only. Do not use for trading decisions.
+                </small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        {% if error %}
+            <div class="alert alert-danger">{{ error }}</div>
+        {% elif forecast_data %}
+            <div class="card">
+                <div class="card-header">
+                    {{ selected_symbol }} - 30 Day Forecast
+                </div>
+                <div class="card-body">
+                    <div id="forecastChart" style="height: 500px;"></div>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-info">Select a stock to view forecast analysis.</div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+{% if forecast_data %}
+<script>
+    var historyTrace = {
+        x: {{ forecast_data.history.dates | tojson }},
+        y: {{ forecast_data.history.values | tojson }},
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Historical',
+        line: {color: '#17a2b8'}
+    };
+
+    var forecastTrace = {
+        x: {{ forecast_data.forecast.dates | tojson }},
+        y: {{ forecast_data.forecast.values | tojson }},
+        type: 'scatter',
+        mode: 'lines',
+        name: 'Forecast',
+        line: {color: '#ffc107', dash: 'dot'}
+    };
+
+    var layout = {
+        title: 'Price History & Forecast',
+        xaxis: {title: 'Date'},
+        yaxis: {title: 'Price (TRY)'},
+        showlegend: true
+    };
+
+    Plotly.newPlot('forecastChart', [historyTrace, forecastTrace], layout);
+</script>
+{% endif %}
+{% endblock %}

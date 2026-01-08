@@ -39,7 +39,14 @@ def get_bist100_data() -> Optional[Dict]:
         # Get 2 days of data to calculate change
         hist = ticker.history(period="2d")
         if hist.empty or len(hist) < 1:
-            return None
+            # Fallback if no data
+            return {
+                "value": 0,
+                "change": 0,
+                "change_percent": 0,
+                "volume": "0",
+                "last_update": datetime.now().strftime("%H:%M")
+            }
             
         # Get current and previous close
         current_close = hist['Close'].iloc[-1]

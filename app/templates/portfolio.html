@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1>Portfolio Holdings</h1>
+    </div>
+</div>
+
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Summary</h5>
+                <p>Total Value (TRY): <strong>₺{{ totals.total_value_try }}</strong></p>
+                <p>Total Cost (TRY): <strong>₺{{ totals.total_cost_try }}</strong></p>
+                <p class="{% if totals.total_profit_loss_try >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    Total Profit/Loss: <strong>₺{{ totals.total_profit_loss_try }}</strong>
+                </p>
+                <p>Total Value (EUR): <strong>€{{ totals.total_value_eur }}</strong></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead class="table-dark">
+            <tr>
+                <th>Symbol</th>
+                <th>Quantity</th>
+                <th>Current Price</th>
+                <th>Avg. Cost</th>
+                <th>Total Value</th>
+                <th>Profit/Loss</th>
+                <th>Return %</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for holding in holdings %}
+            <tr>
+                <td>{{ holding.symbol }}</td>
+                <td>{{ holding.quantity }}</td>
+                <td>₺{{ holding.current_price }}</td>
+                <td>₺{{ holding.average_purchase_price }}</td>
+                <td>₺{{ holding.current_value }}</td>
+                <td class="{{ 'text-success' if holding.profit_loss >= 0 else 'text-danger' }}">
+                    ₺{{ holding.profit_loss }}
+                </td>
+                <td class="{{ 'text-success' if holding.return_percentage >= 0 else 'text-danger' }}">
+                    {{ holding.return_percentage }}%
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="text-center">No holdings found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

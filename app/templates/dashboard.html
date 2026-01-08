@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-md-12">
+        <h1>Dashboard</h1>
+    </div>
+</div>
+
+<!-- BIST 100 Summary -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary mb-3 metric-card">
+            <div class="card-header">BIST 100</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ bist100.value if bist100 else 'N/A' }}</h5>
+                <p class="card-text">
+                    Change: {{ bist100.change if bist100 else '0' }}
+                    ({{ bist100.change_percent if bist100 else '0' }}%)
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-success mb-3 metric-card">
+            <div class="card-header">Portfolio Value</div>
+            <div class="card-body">
+                <h5 class="card-title">₺ {{ metrics.portfolio_health.total_value if metrics and metrics.portfolio_health else '0.00' }}</h5>
+                <p class="card-text">Total Holdings: {{ metrics.portfolio_health.num_holdings if metrics and metrics.portfolio_health else '0' }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-3">
+        <div class="card text-white bg-info mb-3 metric-card">
+            <div class="card-header">Health Score</div>
+            <div class="card-body">
+                <h5 class="card-title">{{ metrics.portfolio_health.score if metrics and metrics.portfolio_health else 'N/A' }}/100</h5>
+                <p class="card-text">Based on diversification & returns</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Top Performers (30d)</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Position Value</th>
+                                <th>30d Change</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if metrics and metrics.top_performers %}
+                                {% for stock in metrics.top_performers %}
+                                <tr>
+                                    <td>{{ stock.symbol }}</td>
+                                    <td>₺{{ stock.position_value }}</td>
+                                    <td class="{{ 'text-success' if stock.performance_30d > 0 else 'text-danger' }}">
+                                        {{ stock.performance_30d }}%
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="3">No data available</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Concentration Risk</div>
+            <div class="card-body">
+                {% if metrics and metrics.concentration_risk and metrics.concentration_risk.is_concentrated %}
+                    <div class="alert alert-warning">
+                        Portfolio is concentrated! Top 3 holdings make up {{ metrics.concentration_risk.top_3_percentage }}% of value.
+                    </div>
+                {% else %}
+                    <div class="alert alert-success">
+                        Portfolio concentration is healthy.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

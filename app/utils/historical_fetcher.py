@@ -4,7 +4,7 @@ from datetime import date, timedelta, datetime
 from typing import List, Dict, Optional, Any
 import numpy as np
 from sqlalchemy.orm import Session
-from .. import models
+from app import models
 from .portfolio_calculator import get_current_holdings, get_user_performance_since_purchase, get_current_holdings_with_quantities
 from .stock_fetcher import get_latest_price
 import time
