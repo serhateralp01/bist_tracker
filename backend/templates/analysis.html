@@ -39,6 +39,14 @@
         }
 
         timeoutId = setTimeout(async () => {
+            // Show loading indicator
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.innerHTML = `
+                <div class="p-3 text-gray-500 text-center">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> Searching...
+                </div>
+            `;
+
             const res = await fetch(`/api/search?q=${q}`);
             const data = await res.json();
 

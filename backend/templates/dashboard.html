@@ -48,6 +48,12 @@
                             </span>
                         </td>
                     </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-5 py-5 border-b border-gray-200 bg-white text-sm text-center text-gray-500">
+                            No holdings yet. Add transactions to see your portfolio!
+                        </td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
