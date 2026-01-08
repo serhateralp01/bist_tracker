@@ -60,27 +60,109 @@
         <canvas id="allocationChart"></canvas>
     </div>
 </div>
+
+<div class="bg-white rounded-lg shadow p-6 mt-6">
+    <h3 class="text-xl font-bold mb-4">Portfolio History (1Y)</h3>
+    <div class="relative h-96 w-full">
+        <canvas id="historyChart"></canvas>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     // Simple Allocation Chart
-    const ctx = document.getElementById('allocationChart').getContext('2d');
+    const ctxAllocation = document.getElementById('allocationChart').getContext('2d');
     const holdings = {{ holdings | tojson }};
     const labels = holdings.map(h => h.symbol);
-    const data = holdings.map(h => h.value_native); // Note: Should normalize to TRY for correct pie chart
+    // Use TRY value for better pie chart representation if available, assuming calculate_totals did currency conversion
+    // Use value_try for normalized allocation chart
+    const dataAllocation = holdings.map(h => h.value_try);
 
-    new Chart(ctx, {
+    new Chart(ctxAllocation, {
         type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
-                data: data,
+                data: dataAllocation,
                 backgroundColor: [
-                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'
+                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+                    '#EC4899', '#8B5CF6', '#6366F1', '#14B8A6', '#F97316'
                 ]
             }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
         }
     });
+
+    // History Chart
+    async function loadHistoryChart() {
+        try {
+            const response = await fetch('/api/chart');
+            const data = await response.json();
+
+            if (data.error) {
+                console.error("Error loading chart data:", data.error);
+                return;
+            }
+
+            const ctxHistory = document.getElementById('historyChart').getContext('2d');
+            const dates = data.dates;
+            const portfolioValues = data.portfolio_performance;
+
+            // Prepare datasets for individual stocks if desired, or just total portfolio
+            // For now, let's show Total Portfolio Value
+
+            const datasets = [{
+                label: 'Total Portfolio Value (TRY)',
+                data: portfolioValues,
+                borderColor: '#10B981', // Emerald 500
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.1
+            }];
+
+            new Chart(ctxHistory, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Value (TRY)'
+                            }
+                        }
+                    }
+                }
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch history data:", error);
+        }
+    }
+
+    loadHistoryChart();
 </script>
 {% endblock %}

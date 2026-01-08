@@ -6,7 +6,7 @@ from backend.utils.search_service import search_assets
 from backend.utils.portfolio_calculator import calculate_portfolio_value, get_current_holdings_with_quantities, calculate_cost_basis_fifo
 from backend.utils.stock_fetcher import get_latest_price
 from backend.utils.currency_fetcher import get_latest_eur_try_rate, get_latest_usd_try_rate
-from backend.utils.historical_fetcher import get_historical_data
+from backend.utils.historical_fetcher import get_historical_data, get_portfolio_timeline_data
 import pandas as pd
 from datetime import datetime, date, timedelta
 from collections import defaultdict
@@ -76,6 +76,7 @@ def calculate_totals(db):
             'qty': quantity,
             'price': current_price,
             'value_native': current_value_native,
+            'value_try': current_value_try,
             'currency': currency,
             'pl': profit_loss,
             'pl_pct': profit_loss_pct
@@ -135,10 +136,11 @@ def api_search():
 
 @app.route('/api/chart')
 def api_chart():
-    # Reuse get_daily_portfolio_value logic simplified
-    # Fetch data and return JSON for Chart.js
-    # For now returning mock/empty
-    return jsonify([])
+    end_date = datetime.today().date()
+    start_date = end_date - timedelta(days=365) # Default 1 year history
+
+    data = get_portfolio_timeline_data(g.db, start_date, end_date)
+    return jsonify(data)
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
