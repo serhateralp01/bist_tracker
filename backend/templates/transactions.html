@@ -67,6 +67,12 @@
                     <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.quantity }}</td>
                     <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.price }}</td>
                 </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="px-5 py-5 border-b border-gray-200 bg-white text-sm text-center text-gray-500">
+                        No transactions found. Start by adding one above!
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -93,6 +99,14 @@
         }
 
         timeoutId = setTimeout(async () => {
+            // Show loading indicator
+            resultsDiv.classList.remove('hidden');
+            resultsDiv.innerHTML = `
+                <div class="p-3 text-gray-500 text-center">
+                    <i class="fas fa-spinner fa-spin mr-2"></i> Searching...
+                </div>
+            `;
+
             const res = await fetch(`/api/search?q=${q}`);
             const data = await res.json();
 
