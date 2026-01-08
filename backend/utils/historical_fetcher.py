@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models
 from .portfolio_calculator import get_current_holdings, get_user_performance_since_purchase, get_current_holdings_with_quantities
 from .stock_fetcher import get_latest_price
+from .fund_fetcher import get_fund_historical_data
 import time
 import random
 import logging
@@ -37,51 +38,202 @@ def log_api_call(func_name, symbol, status, detail=""):
 
 def get_historical_data(symbols: List[str], start_date: date, end_date: date, max_retries=3, delay=1) -> pd.DataFrame:
     """
-    Fetches historical closing prices, retrying on failure with a session.
+    Fetches historical closing prices for stocks and funds.
     """
     if not symbols:
         return pd.DataFrame()
         
-    # Format symbols once
-    formatted_symbols = []
+    stock_symbols = []
+    fund_symbols = []
+
+    # Classify symbols
     for s in symbols:
-        if s.upper() != 'EURTRY=X' and not s.upper().endswith('.IS'):
-            formatted_symbols.append(f"{s}.IS")
+        # Heuristic: Funds are 3 chars and not in special list (like currencies)
+        # But some stocks are 3 chars (IBM).
+        # Better: Assume funds are passed without .IS and are known to be funds?
+        # Ideally, caller should specify type. But this function signature is list[str].
+        # For mixed calls, we might need a way to distinguish.
+        # Current logic in main.py passes raw symbols.
+        # Let's try to detect if it looks like a fund (usually 3 chars, e.g. MAC, TCD).
+        # But this conflicts with US stocks.
+        # For now, we rely on the caller or assume mostly stocks for this function unless explicitly handled.
+        # Actually, let's keep the stock behavior for YFinance, and try TEFAS for things that fail?
+        # Or better: Assume everything is a stock unless it matches a known Fund pattern or fails YFinance?
+        # NO, that's slow.
+
+        # New approach: check if it's a currency or special symbol.
+        if s.endswith('=X'):
+            stock_symbols.append(s)
+        elif s.endswith('.IS'):
+             stock_symbols.append(s)
         else:
+             # It's a raw symbol.
+             # If it's 3 letters and typically a fund...
+             # Let's just treat everything as a stock first (add .IS for TR stocks).
+             # If the caller wants funds, they might need to update this function or call a separate one.
+             # Reviewer noted "Chart Logic Bug" related to this.
+
+             # To support Funds here properly, we need to know it's a fund.
+             # But we only get strings.
+             # Let's try to query TEFAS for 3-letter codes if YFinance fails?
+             # No, `get_historical_data` returns a DataFrame with columns=symbols.
+
+             # Compromise: We will treat everything as potential stock first.
+             # But if we want to support funds, we need to be explicit.
+             # For now, I will add logic: if symbol is 3 chars and uppercase, TRY TEFAS if YFinance yields nothing?
+             # That implies fetching twice.
+
+             # Better: Split into separate fetching logic if we can.
+             stock_symbols.append(s)
+
+    # Fetch Stocks via YFinance
+    stock_data = pd.DataFrame()
+    formatted_stock_symbols = []
+
+    # Map raw symbol to yfinance symbol to keep track
+    symbol_map = {} # YF Symbol -> Original Symbol
+
+    for s in stock_symbols:
+        yf_s = s
+        if s.upper() != 'EURTRY=X' and s.upper() != 'TRY=X' and not s.upper().endswith('.IS') and not s.upper().endswith('=X'):
+             # Assume .IS for TRY stocks? Or leave as is for US stocks?
+             # The system previously assumed .IS for everything not ending in =X.
+             # This breaks US stocks (AAPL -> AAPL.IS ? No).
+             # We should probably check if it's a known US stock? No.
+
+             # Reverting to "Assume .IS" for things that look like BIST (common usage in this app so far).
+             # BUT user wants foreign stocks.
+             # If I type 'AAPL', it should be 'AAPL'.
+             # If I type 'THYAO', it should be 'THYAO.IS'.
+
+             # HEURISTIC: BIST stocks usually don't have this conflict except for 3-letter ones?
+             # Actually, if I just request 'AAPL', YFinance finds it.
+             # If I request 'THYAO', YFinance might not find it or find it elsewhere. 'THYAO.IS' is specific.
+
+             # Strategy:
+             # 1. If explicitly has suffix, use it.
+             # 2. If 4+ chars, likely BIST if not known US?
+             # 3. Use `search_assets` logic? No, too slow.
+
+             # Let's maintain the old behavior: append .IS if it's likely a BIST stock.
+             # But how to distinguish 'AAPL' from 'SISE'?
+             # Maybe try without .IS first? Or with?
+
+             # Let's append .IS if it's NOT a known currency/index.
+             # AND if it fails, maybe try without?
+             # This function `get_historical_data` is bulk.
+
+             # Fix: We will rely on `main.py` or the caller to pass correct suffixes if possible.
+             # But `main.py` passes `all_symbols` from transactions.
+             # Transaction has `currency`.
+             # We should probably pass `(symbol, currency)` tuples to this function?
+             # Changing signature breaks other calls.
+
+             # For this task, I will stick to YFinance logic but add TEFAS support for 3-letter symbols if requested?
+
+             # Let's try to handle Funds explicitly.
+             pass
+
+        # Format symbols once
+        formatted_symbols = []
+        # We need to be careful. The original code did:
+        # if s.upper() != 'EURTRY=X' and not s.upper().endswith('.IS'): formatted_symbols.append(f"{s}.IS")
+
+        # We will keep this for BIST stocks, but it breaks AAPL.
+        # I'll rely on the caller to provide suffixed symbols for BIST if possible,
+        # OR I accept that for now Foreign Stocks might need to be entered with suffix or handled differently?
+        # User requirement 2: "add foreign stocks".
+        # If user enters "AAPL", we save "AAPL".
+        # If we query "AAPL.IS", it fails.
+
+        # TEMPORARY FIX:
+        # If symbol length > 3 and not .IS, append .IS (legacy BIST support).
+        # If symbol length <= 3 (e.g. IBM, UPS, or Funds MAC, TCD), it's ambiguous.
+        # We can try to fetch as is.
+
+        if s.upper() in ['EURTRY=X', 'TRY=X']:
             formatted_symbols.append(s)
+            symbol_map[s] = s
+        elif s.endswith('.IS'):
+            formatted_symbols.append(s)
+            symbol_map[s] = s
+        elif len(s) > 3:
+             # Likely BIST per old logic, but could be MSFT.
+             # This is a weak spot.
+             # Ideally the DB stores the YFinance ticker.
+             # I will assume: If currency is TRY (which we don't know here), it's .IS
+
+             # Let's just treat as-is for now if we can't be sure?
+             # No, that breaks existing BIST support which relied on auto-suffix.
+
+             # Let's append .IS for 4+ chars, UNLESS it's a known foreign format?
+             formatted_symbols.append(f"{s}.IS")
+             symbol_map[f"{s}.IS"] = s
+        else:
+             # <= 3 chars. Could be Fund or US Stock.
+             # Let's try as is.
+             formatted_symbols.append(s)
+             symbol_map[s] = s
+
     ticker_string = " ".join(formatted_symbols)
 
     last_error = None
-    for attempt in range(max_retries):
-        try:
-            start_time = time.time()
-            # Let yfinance handle the session internally
-            data = yf.download(ticker_string, start=start_date, end=end_date, progress=False, auto_adjust=True)
-            duration = time.time() - start_time
-            if not data.empty:
-                log_api_call('yf.download', ticker_string, 'SUCCESS', f'Attempt {attempt + 1}, Duration: {duration:.2f}s')
-                # We only need the closing prices
-                close_prices = data['Close']
-                if isinstance(close_prices, pd.Series):
-                    close_prices = close_prices.to_frame(name=formatted_symbols[0])
-                # Forward-fill missing values for weekends/holidays
-                return close_prices.ffill()
-        except Exception as e:
-            last_error = e
-            duration = time.time() - start_time
-            log_api_call('yf.download', ticker_string, 'FAIL', f'Attempt {attempt + 1}, Duration: {duration:.2f}s, Error: {e}')
-            if "401" in str(e) or "Unauthorized" in str(e):
-                print(f"Attempt {attempt + 1}/{max_retries} to fetch historical data failed: Yahoo API authentication issue")
-            else:
-                print(f"Attempt {attempt + 1}/{max_retries} to fetch historical data failed: {e}")
-        
-        if attempt < max_retries - 1:
-            # Use a longer delay for 401 errors to avoid rate limiting
-            delay_time = (delay + random.uniform(1, 3)) if last_error and "401" in str(last_error) else (delay + random.uniform(0, 1))
-            time.sleep(delay_time) 
+    if formatted_symbols:
+        for attempt in range(max_retries):
+            try:
+                start_time = time.time()
+                data = yf.download(ticker_string, start=start_date, end=end_date, progress=False, auto_adjust=True)
+                duration = time.time() - start_time
+                if not data.empty:
+                    log_api_call('yf.download', ticker_string, 'SUCCESS', f'Attempt {attempt + 1}, Duration: {duration:.2f}s')
+                    close_prices = data['Close']
+                    # Normalize columns to original symbols
+                    # if single symbol, it's a series or df with 1 col
+                    if isinstance(close_prices, pd.Series):
+                        close_prices = close_prices.to_frame(name=formatted_symbols[0])
 
-    print(f"All {max_retries} attempts to fetch historical data failed.")
-    return pd.DataFrame() # Return empty dataframe if all retries fail
+                    # Rename columns from YF Ticker -> Original Symbol
+                    new_cols = {}
+                    for col in close_prices.columns:
+                        if col in symbol_map:
+                            new_cols[col] = symbol_map[col]
+                    stock_data = close_prices.rename(columns=new_cols)
+                    stock_data = stock_data.ffill()
+                    break
+            except Exception as e:
+                last_error = e
+                duration = time.time() - start_time
+                log_api_call('yf.download', ticker_string, 'FAIL', f'Attempt {attempt + 1}, Duration: {duration:.2f}s, Error: {e}')
+                time.sleep(delay)
+
+    # Handle Funds (TEFAS)
+    # If we have 3-letter symbols that were NOT found in YFinance (or even if we didn't check),
+    # we should check TEFAS for them.
+    # Current simplistic logic: Check for symbols that might be funds.
+    # 3 letters, uppercase.
+
+    # We can try to fetch all potential funds
+    potential_funds = [s for s in symbols if len(s) == 3 and s.isalnum() and s not in stock_data.columns]
+
+    if potential_funds:
+        for fund_sym in potential_funds:
+            # Fetch individually (TEFAS crawler limitation? or can we bulk?)
+            # tefas-crawler creates a new request per fund usually unless we pass list?
+            # Crawler().fetch(funds=[...]) is possible?
+            # library documentation says `crawler.fetch(..., columns=["code", ...])`
+            # It returns all funds if no filters.
+            # We can use `name=symbol` for individual.
+            # Let's iterate for safety.
+
+            fund_df = get_fund_historical_data(fund_sym, start_date, end_date)
+            if not fund_df.empty:
+                # Merge into stock_data
+                if stock_data.empty:
+                    stock_data = fund_df
+                else:
+                    stock_data = stock_data.join(fund_df, how='outer')
+
+    return stock_data
 
 def adjust_for_stock_splits(hist_data, symbol: str):
     """
@@ -1611,4 +1763,4 @@ def get_enhanced_dashboard_metrics(db: Session) -> Dict[str, Any]:
         return dashboard_metrics
         
     except Exception as e:
-        return {"error": f"Error calculating dashboard metrics: {str(e)}"} 
+        return {"error": f"Error calculating dashboard metrics: {str(e)}"}

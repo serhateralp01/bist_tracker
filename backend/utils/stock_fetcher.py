@@ -3,6 +3,7 @@ from typing import Dict, Optional
 from datetime import datetime, timedelta
 import logging
 import time
+from .fund_fetcher import get_fund_price
 
 # Configure structured logging if not already configured
 if not logging.getLogger().handlers:
@@ -11,17 +12,50 @@ if not logging.getLogger().handlers:
 def log_api_call(func_name, symbol, status, detail=""):
     logging.info(f"API_CALL - Function: {func_name}, Symbol: {symbol}, Status: {status}, Detail: {detail}")
 
-def get_latest_price(symbol: str) -> float:
+def get_latest_price(symbol: str, asset_type: str = "STOCK", currency: str = "TRY") -> Optional[float]:
+    """
+    Fetches the latest price for a given symbol.
+    Supports STOCKS and FUNDS.
+    Handles different currencies for stocks.
+    """
     start_time = time.time()
+
+    # 1. Handle Funds (TEFAS)
+    if asset_type == "FUND":
+        price = get_fund_price(symbol)
+        duration = time.time() - start_time
+        if price is not None:
+             log_api_call('get_latest_price', symbol, 'SUCCESS', f'Type: FUND, Duration: {duration:.2f}s')
+             return price
+        else:
+             log_api_call('get_latest_price', symbol, 'FAIL', f'Type: FUND, Duration: {duration:.2f}s')
+             return None
+
+    # 2. Handle Stocks (YFinance)
     try:
-        ticker = yf.Ticker(symbol + ".IS")
+        # Determine ticker suffix based on currency/market
+        # If it's TRY and not explicitly foreign, append .IS
+        # If it's USD or EUR, assume it's a foreign ticker (e.g. AAPL, BMW.DE)
+
+        ticker_symbol = symbol
+        if currency == "TRY" and not symbol.endswith(".IS"):
+             # Assumption: If currency is TRY, it's likely BIST.
+             # Unless the user explicitly put .IS already.
+             ticker_symbol = symbol + ".IS"
+
+        # If currency is NOT TRY (e.g. USD), use symbol as is (e.g. AAPL)
+
+        ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period="1d")
         duration = time.time() - start_time
+
         if hist.empty:
-            log_api_call('get_latest_price', symbol, 'FAIL', f'Duration: {duration:.2f}s, Reason: History is empty')
+            log_api_call('get_latest_price', symbol, 'FAIL', f'Ticker: {ticker_symbol}, Duration: {duration:.2f}s, Reason: History is empty')
             return None
-        log_api_call('get_latest_price', symbol, 'SUCCESS', f'Duration: {duration:.2f}s')
+
+        log_api_call('get_latest_price', symbol, 'SUCCESS', f'Ticker: {ticker_symbol}, Duration: {duration:.2f}s')
         return round(hist['Close'].iloc[-1], 2)
+
     except Exception as e:
         duration = time.time() - start_time
         log_api_call('get_latest_price', symbol, 'EXCEPTION', f'Duration: {duration:.2f}s, Error: {e}')

@@ -12,3 +12,5 @@ class Transaction(Base):
     exchange_rate = Column(Float, nullable=True)
     value_eur = Column(Float, nullable=True)
     note = Column(String)
+    asset_type = Column(String, default="STOCK") # STOCK, FUND
+    currency = Column(String, default="TRY") # TRY, USD, EUR
