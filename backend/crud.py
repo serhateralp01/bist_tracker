@@ -1,6 +1,5 @@
 from collections import defaultdict
 from sqlalchemy.orm import Session
-from fastapi import Depends
 from . import models, schemas
 from datetime import date
 from .utils.currency_fetcher import get_historical_eur_try_rate

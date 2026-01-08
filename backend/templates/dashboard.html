@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+    <!-- Summary Cards -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-gray-500 text-sm font-bold uppercase">Total Value (TRY)</h3>
+        <p class="text-3xl font-bold text-gray-800">₺{{ "{:,.2f}".format(totals.try) }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-gray-500 text-sm font-bold uppercase">Total Value (USD)</h3>
+        <p class="text-3xl font-bold text-blue-600">${{ "{:,.2f}".format(totals.usd) }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-gray-500 text-sm font-bold uppercase">Total Value (EUR)</h3>
+        <p class="text-3xl font-bold text-indigo-600">€{{ "{:,.2f}".format(totals.eur) }}</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Holdings Table -->
+    <div class="bg-white rounded-lg shadow p-6 lg:col-span-2">
+        <h3 class="text-xl font-bold mb-4">Current Holdings</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Symbol</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Price</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Value</th>
+                        <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">P/L %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in holdings %}
+                    <tr>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                            <span class="font-bold">{{ h.symbol }}</span>
+                            <span class="text-xs text-gray-500 block">{{ h.currency }}</span>
+                        </td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ h.qty }}</td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ "{:,.2f}".format(h.price) }}</td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ "{:,.2f}".format(h.value_native) }}</td>
+                        <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">
+                            <span class="{{ 'text-green-500' if h.pl_pct >= 0 else 'text-red-500' }}">
+                                {{ "{:,.2f}".format(h.pl_pct) }}%
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Chart Placeholder -->
+    <div class="bg-white rounded-lg shadow p-6">
+        <h3 class="text-xl font-bold mb-4">Allocation</h3>
+        <canvas id="allocationChart"></canvas>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Simple Allocation Chart
+    const ctx = document.getElementById('allocationChart').getContext('2d');
+    const holdings = {{ holdings | tojson }};
+    const labels = holdings.map(h => h.symbol);
+    const data = holdings.map(h => h.value_native); // Note: Should normalize to TRY for correct pie chart
+
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'
+                ]
+            }]
+        }
+    });
+</script>
+{% endblock %}

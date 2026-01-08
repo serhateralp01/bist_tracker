@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white rounded-lg shadow p-6 mb-6">
+    <h2 class="text-2xl font-bold mb-4">Add Transaction</h2>
+    <form action="/transactions" method="POST" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Date</label>
+            <input type="date" name="date" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+        </div>
+        <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Type</label>
+            <select name="type" class="shadow border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+                <option value="deposit">Deposit</option>
+                <option value="withdrawal">Withdrawal</option>
+            </select>
+        </div>
+
+        <!-- Autocomplete Search -->
+        <div class="relative">
+            <label class="block text-gray-700 text-sm font-bold mb-2">Symbol (Search)</label>
+            <input type="text" id="symbolSearch" placeholder="Type to search (e.g. MAC, AAPL)..." class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+            <div id="searchResults" class="absolute z-10 bg-white shadow-lg w-full mt-1 rounded hidden border"></div>
+            <!-- Hidden inputs to store selected data -->
+            <input type="hidden" name="symbol" id="symbolInput">
+            <input type="hidden" name="asset_type" id="assetTypeInput" value="STOCK">
+            <input type="hidden" name="currency" id="currencyInput" value="TRY">
+        </div>
+
+        <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Quantity</label>
+            <input type="number" step="any" name="quantity" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+        </div>
+        <div>
+            <label class="block text-gray-700 text-sm font-bold mb-2">Price</label>
+            <input type="number" step="any" name="price" required class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+        </div>
+        <div class="md:col-span-2">
+            <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline w-full">
+                Add Transaction
+            </button>
+        </div>
+    </form>
+</div>
+
+<div class="bg-white rounded-lg shadow p-6">
+    <h2 class="text-2xl font-bold mb-4">History</h2>
+    <div class="overflow-x-auto">
+        <table class="min-w-full leading-normal">
+            <thead>
+                <tr>
+                    <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                    <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                    <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Symbol</th>
+                    <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Qty</th>
+                    <th class="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.date }}</td>
+                    <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm uppercase font-bold">{{ t.type }}</td>
+                    <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.symbol }}</td>
+                    <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.quantity }}</td>
+                    <td class="px-5 py-5 border-b border-gray-200 bg-white text-sm">{{ t.price }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const searchInput = document.getElementById('symbolSearch');
+    const resultsDiv = document.getElementById('searchResults');
+    const symbolInput = document.getElementById('symbolInput');
+    const assetTypeInput = document.getElementById('assetTypeInput');
+    const currencyInput = document.getElementById('currencyInput');
+
+    let timeoutId;
+
+    searchInput.addEventListener('input', (e) => {
+        clearTimeout(timeoutId);
+        const q = e.target.value;
+        if (q.length < 2) {
+            resultsDiv.classList.add('hidden');
+            return;
+        }
+
+        timeoutId = setTimeout(async () => {
+            const res = await fetch(`/api/search?q=${q}`);
+            const data = await res.json();
+
+            resultsDiv.innerHTML = '';
+            if (data.length > 0) {
+                resultsDiv.classList.remove('hidden');
+                data.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = 'p-2 hover:bg-gray-100 cursor-pointer border-b';
+                    div.innerHTML = `
+                        <div class="font-bold">${item.symbol} <span class="text-xs text-gray-500">(${item.type} - ${item.currency})</span></div>
+                        <div class="text-xs text-gray-600">${item.name}</div>
+                    `;
+                    div.addEventListener('click', () => {
+                        searchInput.value = item.symbol;
+                        symbolInput.value = item.symbol;
+                        assetTypeInput.value = item.type;
+                        currencyInput.value = item.currency;
+                        resultsDiv.classList.add('hidden');
+                    });
+                    resultsDiv.appendChild(div);
+                });
+            } else {
+                resultsDiv.classList.add('hidden');
+            }
+        }, 300);
+    });
+
+    // Close dropdown on click outside
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !resultsDiv.contains(e.target)) {
+            resultsDiv.classList.add('hidden');
+        }
+    });
+</script>
+{% endblock %}
